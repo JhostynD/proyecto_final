@@ -1,0 +1,52 @@
+.consulta-container {
+  min-height: 80vh;
+  padding: 40px;
+  background: #f5f7fa;
+}
+
+.consulta-container h1 {
+  text-align: center;
+  color: #003366;
+  margin-bottom: 30px;
+}
+
+.table-container {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+}
+
+th {
+  background: #0066cc;
+  color: white;
+  padding: 15px;
+}
+
+td {
+  padding: 15px;
+  text-align: center;
+  border-bottom: 1px solid #ddd;
+}
+
+.estado {
+  padding: 8px 15px;
+  border-radius: 20px;
+  color: white;
+  font-weight: bold;
+}
+
+.pendiente {
+  background: #f39c12;
+}
+
+.confirmado {
+  background: #27ae60;
+}
+
+.cancelado {
+  background: #e74c3c;
+}

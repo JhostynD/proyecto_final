@@ -1,0 +1,176 @@
+/* HERO */
+.hero {
+  min-height: 85vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #0066cc, #00a8ff);
+  color: white;
+  text-align: center;
+}
+
+.hero-content {
+  max-width: 800px;
+  padding: 20px;
+}
+
+.hero h1 {
+  font-size: 3.2rem;
+  margin-bottom: 20px;
+}
+
+.hero p {
+  font-size: 1.2rem;
+  margin-bottom: 30px;
+}
+
+.hero-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}
+
+.btn-primary,
+.btn-secondary {
+  padding: 14px 28px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: 0.3s;
+}
+
+.btn-primary {
+  background: white;
+  color: #0066cc;
+}
+
+.btn-secondary {
+  background: #003366;
+  color: white;
+}
+
+.btn-primary:hover,
+.btn-secondary:hover {
+  transform: scale(1.05);
+}
+
+/* SERVICIOS */
+.services {
+  padding: 80px 20px;
+  text-align: center;
+  background: #f5f7fa;
+}
+
+.services h2 {
+  margin-bottom: 50px;
+  color: #003366;
+}
+
+.cards {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 25px;
+}
+
+.card {
+  width: 300px;
+  background: white;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  transition: 0.3s;
+}
+
+.card:hover {
+  transform: translateY(-8px);
+}
+
+.card h3 {
+  color: #0066cc;
+  margin-bottom: 10px;
+}
+
+/* STEPS */
+.steps {
+  padding: 80px 20px;
+  text-align: center;
+  background: white;
+}
+
+.steps h2 {
+  margin-bottom: 50px;
+  color: #003366;
+}
+
+.steps-container {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.step {
+  width: 200px;
+  background: #f5f7fa;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+}
+
+.step h3 {
+  width: 50px;
+  height: 50px;
+  margin: 0 auto 15px;
+  border-radius: 50%;
+  background: #0066cc;
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* STATS */
+.stats {
+  background: #003366;
+  color: white;
+  padding: 60px 20px;
+  display: flex;
+  justify-content: center;
+  gap: 80px;
+  flex-wrap: wrap;
+}
+
+.stat {
+  text-align: center;
+}
+
+.stat h2 {
+  font-size: 2.5rem;
+}
+
+/* RESPONSIVE */
+@media (max-width: 768px) {
+
+  .hero h1 {
+    font-size: 2rem;
+  }
+
+  .hero-buttons {
+    flex-direction: column;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    width: 250px;
+  }
+
+  .card {
+    width: 90%;
+  }
+
+  .step {
+    width: 90%;
+  }
+}
