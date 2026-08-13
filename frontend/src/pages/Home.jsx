@@ -20,23 +20,11 @@ function Home() {
           </p>
 
           <div className="hero-buttons">
-            <Link to="/login">
-              <button className="btn-primary">
-                Iniciar Sesión
-              </button>
-            </Link>
+            <Link className="btn-primary" to="/login">Iniciar Sesión</Link>
 
-            <Link to="/registro">
-              <button className="btn-secondary">
-                Registrarse
-              </button>
-            </Link>
+            <Link className="btn-secondary" to="/registro">Registrarse</Link>
 
-            <Link to="/solicitar-turno">
-              <button className="btn-primary">
-                Solicitar Turno
-              </button>
-            </Link>
+            <Link className="btn-primary" to="/solicitar-turno">Solicitar Turno</Link>
           </div>
         </div>
       </section>

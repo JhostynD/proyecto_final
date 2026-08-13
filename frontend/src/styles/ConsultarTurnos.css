@@ -50,3 +50,7 @@ td {
 .cancelado {
   background: #e74c3c;
 }
+
+.completado { background: #2980b9; }
+.table-container button { padding: 7px 10px; border: 0; border-radius: 5px; cursor: pointer; color: white; background: #e74c3c; }
+.form-error { color: #c0392b; text-align: center; }

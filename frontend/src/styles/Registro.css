@@ -51,3 +51,5 @@
 .registro-card button:hover {
   background: #004c99;
 }
+
+.form-error { color: #c0392b; margin: 0; text-align: center; }

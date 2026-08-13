@@ -10,45 +10,38 @@
   background: #003366;
   color: white;
   padding: 30px 20px;
+  flex-shrink: 0;
 }
 
-.sidebar h2 {
-  margin-bottom: 40px;
-  text-align: center;
-}
-
-.sidebar ul {
-  list-style: none;
-  padding: 0;
-}
-
-.sidebar li {
-  padding: 15px;
-  margin-bottom: 10px;
-  border-radius: 10px;
-  transition: 0.3s;
-}
-
-.sidebar li:hover {
-  background: rgba(255,255,255,0.15);
-}
-
-.sidebar a {
+.admin-brand {
   color: white;
-  text-decoration: none;
   display: block;
+  font-weight: 800;
+  font-size: 1.15rem;
+  text-decoration: none;
+  margin-bottom: 8px;
 }
 
-.sidebar a:hover {
-  color: #00a8ff;
+.sidebar p { color: #b8cff0; margin-bottom: 32px; }
+.sidebar nav { display: grid; gap: 8px; }
+.sidebar button {
+  background: transparent;
+  border: 0;
+  color: white;
+  border-radius: 9px;
+  padding: 12px 14px;
+  text-decoration: none;
+  cursor: pointer;
+  text-align: left;
 }
+.sidebar button:hover, .sidebar button.active { background: rgba(255,255,255,0.16); }
 
 /* CONTENIDO */
 
 .dashboard-content {
   flex: 1;
   padding: 40px;
-  background: #f5f7fa;
+  background: var(--fondo);
 }
 
 .dashboard-content h1 {
@@ -71,7 +64,7 @@
   padding: 25px;
   border-radius: 15px;
   text-align: center;
-  box-shadow: 0 5px 12px rgba(0,0,0,0.1);
+  box-shadow: var(--sombra);
 }
 
 .dashboard-card h2 {
@@ -148,3 +141,5 @@ td {
   }
 
 }
+
+.form-error { color: #b42318; margin: 0 0 20px; }

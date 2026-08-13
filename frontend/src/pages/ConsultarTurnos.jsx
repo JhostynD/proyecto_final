@@ -1,83 +1,21 @@
+import { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+import { api } from "../lib/api";
 import "../styles/ConsultarTurnos.css";
 
 function ConsultarTurnos() {
-  const turnos = [
-    {
-      id: "001",
-      servicio: "Asesoría",
-      fecha: "20/06/2026",
-      hora: "08:00 AM",
-      estado: "Pendiente"
-    },
-    {
-      id: "002",
-      servicio: "Soporte Técnico",
-      fecha: "22/06/2026",
-      hora: "10:30 AM",
-      estado: "Confirmado"
-    },
-    {
-      id: "003",
-      servicio: "Atención General",
-      fecha: "24/06/2026",
-      hora: "02:00 PM",
-      estado: "Cancelado"
-    }
-  ];
-
-  return (
-    <>
-      <Navbar />
-
-      <div className="consulta-container">
-
-        <h1>Mis Turnos</h1>
-
-        <div className="table-container">
-
-          <table>
-
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Servicio</th>
-                <th>Fecha</th>
-                <th>Hora</th>
-                <th>Estado</th>
-              </tr>
-            </thead>
-
-            <tbody>
-
-              {turnos.map((turno) => (
-                <tr key={turno.id}>
-                  <td>{turno.id}</td>
-                  <td>{turno.servicio}</td>
-                  <td>{turno.fecha}</td>
-                  <td>{turno.hora}</td>
-                  <td>
-                    <span
-                      className={`estado ${turno.estado.toLowerCase()}`}
-                    >
-                      {turno.estado}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-
-            </tbody>
-
-          </table>
-
-        </div>
-
-      </div>
-
-      <Footer />
-    </>
-  );
+  const [turnos, setTurnos] = useState([]);
+  const [error, setError] = useState("");
+  const [cargando, setCargando] = useState(true);
+  const cargar = () => api("/turnos").then(setTurnos).catch((err) => setError(err.message)).finally(() => setCargando(false));
+  useEffect(() => { cargar(); }, []);
+  async function cancelar(id) {
+    setError("");
+    try { await api(`/turnos/${id}/cancelar`, { method: "PATCH" }); setCargando(true); cargar(); } catch (err) { setError(err.message); }
+  }
+  return <><Navbar /><div className="consulta-container"><h1>Mis Turnos</h1>{error && <p className="form-error" role="alert">{error}</p>}<div className="table-container"><table><thead><tr><th>ID</th><th>Servicio</th><th>Fecha</th><th>Hora</th><th>Estado</th><th>Acción</th></tr></thead><tbody>
+    {cargando ? <tr><td colSpan="6">Cargando turnos...</td></tr> : turnos.length ? turnos.map((turno) => <tr key={turno.id}><td>{turno.id}</td><td>{turno.servicio}</td><td>{turno.fecha}</td><td>{turno.hora}</td><td><span className={`estado ${turno.estado}`}>{turno.estado}</span></td><td>{["pendiente", "confirmado"].includes(turno.estado) && <button onClick={() => cancelar(turno.id)}>Cancelar</button>}</td></tr>) : <tr><td colSpan="6">No tienes turnos registrados.</td></tr>}
+  </tbody></table></div></div><Footer /></>;
 }
-
 export default ConsultarTurnos;

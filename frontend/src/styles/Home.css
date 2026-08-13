@@ -4,7 +4,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(135deg, #0066cc, #00a8ff);
+  background: radial-gradient(circle at top right, #47a8ef, transparent 36%), linear-gradient(135deg, var(--azul-900), var(--azul-700));
   color: white;
   text-align: center;
 }
@@ -32,12 +32,16 @@
 
 .btn-primary,
 .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 14px 28px;
   border: none;
   border-radius: 10px;
   cursor: pointer;
   font-weight: bold;
   transition: 0.3s;
+  text-decoration: none;
 }
 
 .btn-primary {
@@ -52,14 +56,15 @@
 
 .btn-primary:hover,
 .btn-secondary:hover {
-  transform: scale(1.05);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, .18);
 }
 
 /* SERVICIOS */
 .services {
   padding: 80px 20px;
   text-align: center;
-  background: #f5f7fa;
+  background: var(--fondo);
 }
 
 .services h2 {
@@ -79,12 +84,12 @@
   background: white;
   padding: 25px;
   border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  box-shadow: var(--sombra);
   transition: 0.3s;
 }
 
 .card:hover {
-  transform: translateY(-8px);
+  transform: translateY(-6px);
 }
 
 .card h3 {
@@ -116,7 +121,7 @@
   background: #f5f7fa;
   padding: 20px;
   border-radius: 12px;
-  box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+  box-shadow: var(--sombra);
 }
 
 .step h3 {

@@ -43,6 +43,9 @@
   color: #00a8ff;
 }
 
+.nav-logout { background: transparent; border: 0; color: white; cursor: pointer; font: inherit; padding: 0; }
+.nav-logout:hover { color: #00a8ff; }
+
 /* Responsive */
 
 @media (max-width: 768px) {

@@ -1,7 +1,11 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { cerrarSesion, obtenerSesion } from "../lib/auth";
 import "./Navbar.css";
 
 function Navbar() {
+  const navegar = useNavigate();
+  const sesion = obtenerSesion();
+  function salir() { cerrarSesion(); navegar("/"); }
   return (
     <nav className="navbar">
 
@@ -33,17 +37,8 @@ function Navbar() {
           </Link>
         </li>
 
-        <li>
-          <Link to="/admin">
-            Administrador
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/login">
-            Iniciar Sesión
-          </Link>
-        </li>
+        {sesion?.usuario?.rol === "admin" && <li><Link to="/admin">Administrador</Link></li>}
+        {sesion ? <li><button className="nav-logout" onClick={salir}>Cerrar sesión</button></li> : <><li><Link to="/login">Iniciar Sesión</Link></li><li><Link to="/registro">Registrarme</Link></li></>}
 
       </ul>
 

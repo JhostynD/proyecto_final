@@ -49,3 +49,5 @@
 .turno-info p {
   margin-bottom: 12px;
 }
+
+.form-error { color: #c0392b; text-align: center; }

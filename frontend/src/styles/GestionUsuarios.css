@@ -1,5 +1,7 @@
 .usuarios-container {
   padding: 40px;
+  background: var(--fondo);
+  flex: 1;
 }
 
 .usuarios-container h1 {
@@ -12,6 +14,7 @@
   padding: 20px;
   border-radius: 15px;
   overflow-x: auto;
+  box-shadow: var(--sombra);
 }
 
 .usuarios-table table {

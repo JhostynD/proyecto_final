@@ -1,89 +1,14 @@
+import { useEffect, useState } from "react";
+import { api } from "../lib/api";
+import AdminSidebar from "../components/AdminSidebar";
 import "../styles/GestionTurnos.css";
 
 function GestionTurnos() {
-  const turnos = [
-    {
-      id: 1,
-      usuario: "Miguel Loaiza",
-      servicio: "Asesoría",
-      fecha: "25/06/2026",
-      estado: "Pendiente",
-    },
-    {
-      id: 2,
-      usuario: "Juan Pérez",
-      servicio: "Soporte Técnico",
-      fecha: "26/06/2026",
-      estado: "Confirmado",
-    },
-    {
-      id: 3,
-      usuario: "Laura Gómez",
-      servicio: "Atención General",
-      fecha: "27/06/2026",
-      estado: "Completado",
-    },
-  ];
-
-  return (
-    <div className="turnos-admin-container">
-
-      <h1>Gestión de Turnos</h1>
-
-      <div className="turnos-table">
-
-        <table>
-
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Usuario</th>
-              <th>Servicio</th>
-              <th>Fecha</th>
-              <th>Estado</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-
-          <tbody>
-
-            {turnos.map((turno) => (
-              <tr key={turno.id}>
-
-                <td>{turno.id}</td>
-                <td>{turno.usuario}</td>
-                <td>{turno.servicio}</td>
-                <td>{turno.fecha}</td>
-
-                <td>
-                  <span className={`estado ${turno.estado.toLowerCase()}`}>
-                    {turno.estado}
-                  </span>
-                </td>
-
-                <td>
-
-                  <button className="btn-confirmar">
-                    Confirmar
-                  </button>
-
-                  <button className="btn-cancelar">
-                    Cancelar
-                  </button>
-
-                </td>
-
-              </tr>
-            ))}
-
-          </tbody>
-
-        </table>
-
-      </div>
-
-    </div>
-  );
+  const [turnos, setTurnos] = useState([]);
+  const [error, setError] = useState("");
+  const cargar = () => api("/admin/resumen").then((datos) => setTurnos(datos.turnos)).catch((err) => setError(err.message));
+  useEffect(cargar, []);
+  async function actualizar(id, estado) { try { await api(`/admin/turnos/${id}`, { method: "PATCH", body: JSON.stringify({ estado }) }); cargar(); } catch (err) { setError(err.message); } }
+  return <div className="admin-layout"><AdminSidebar /><main className="turnos-admin-container"><h1>Gestión de Turnos</h1>{error && <p className="form-error">{error}</p>}<div className="turnos-table"><table><thead><tr><th>ID</th><th>Usuario</th><th>Servicio</th><th>Fecha</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{turnos.map((turno) => <tr key={turno.id}><td>{turno.id}</td><td>{turno.usuario}</td><td>{turno.servicio}</td><td>{turno.fecha} {turno.hora}</td><td><span className={`estado ${turno.estado}`}>{turno.estado}</span></td><td className="table-actions">{turno.estado === "pendiente" && <button className="btn-confirmar" onClick={() => actualizar(turno.id, "confirmado")}>Confirmar</button>}{turno.estado === "confirmado" && <button className="btn-completar" onClick={() => actualizar(turno.id, "completado")}>Completar</button>}{!["cancelado", "completado"].includes(turno.estado) && <button className="btn-cancelar" onClick={() => actualizar(turno.id, "cancelado")}>Cancelar</button>}</td></tr>)}</tbody></table></div></main></div>;
 }
-
 export default GestionTurnos;
