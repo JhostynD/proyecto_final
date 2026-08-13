@@ -1,0 +1,81 @@
+.turnos-admin-container {
+  padding: 40px;
+  background: var(--fondo);
+  flex: 1;
+}
+
+.turnos-admin-container h1 {
+  color: #003366;
+  margin-bottom: 30px;
+}
+
+.turnos-table {
+  background: white;
+  padding: 20px;
+  border-radius: 15px;
+  overflow-x: auto;
+  box-shadow: var(--sombra);
+}
+
+.turnos-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.turnos-table th {
+  background: #0066cc;
+  color: white;
+  padding: 15px;
+}
+
+.turnos-table td {
+  padding: 15px;
+  text-align: center;
+  border-bottom: 1px solid #ddd;
+}
+
+/* ESTADOS */
+
+.estado {
+  color: white;
+  padding: 8px 15px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+}
+
+.pendiente {
+  background: #f39c12;
+}
+
+.confirmado {
+  background: #27ae60;
+}
+
+.completado {
+  background: #3498db;
+}
+
+/* BOTONES */
+
+.btn-confirmar {
+  background: #27ae60;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-right: 5px;
+  cursor: pointer;
+}
+
+.btn-cancelar {
+  background: #e74c3c;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.btn-completar { background: #2988d8; color: white; border: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+.table-actions { white-space: nowrap; }
+.cancelado { background: #e74c3c; }

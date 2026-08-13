@@ -1,0 +1,145 @@
+.admin-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* SIDEBAR */
+
+.sidebar {
+  width: 250px;
+  background: #003366;
+  color: white;
+  padding: 30px 20px;
+  flex-shrink: 0;
+}
+
+.admin-brand {
+  color: white;
+  display: block;
+  font-weight: 800;
+  font-size: 1.15rem;
+  text-decoration: none;
+  margin-bottom: 8px;
+}
+
+.sidebar p { color: #b8cff0; margin-bottom: 32px; }
+.sidebar nav { display: grid; gap: 8px; }
+.sidebar button {
+  background: transparent;
+  border: 0;
+  color: white;
+  border-radius: 9px;
+  padding: 12px 14px;
+  text-decoration: none;
+  cursor: pointer;
+  text-align: left;
+}
+.sidebar button:hover, .sidebar button.active { background: rgba(255,255,255,0.16); }
+
+/* CONTENIDO */
+
+.dashboard-content {
+  flex: 1;
+  padding: 40px;
+  background: var(--fondo);
+}
+
+.dashboard-content h1 {
+  color: #003366;
+  margin-bottom: 30px;
+}
+
+/* TARJETAS */
+
+.dashboard-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 25px;
+  margin-bottom: 40px;
+}
+
+.dashboard-card {
+  width: 220px;
+  background: white;
+  padding: 25px;
+  border-radius: 15px;
+  text-align: center;
+  box-shadow: var(--sombra);
+}
+
+.dashboard-card h2 {
+  font-size: 2.5rem;
+  color: #0066cc;
+}
+
+/* TABLA */
+
+.recent-turnos {
+  background: white;
+  padding: 25px;
+  border-radius: 15px;
+  overflow-x: auto;
+}
+
+.recent-turnos h2 {
+  margin-bottom: 20px;
+  color: #003366;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  background: #0066cc;
+  color: white;
+  padding: 15px;
+}
+
+td {
+  padding: 15px;
+  border-bottom: 1px solid #ddd;
+  text-align: center;
+}
+
+/* ESTADOS */
+
+.estado {
+  color: white;
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+}
+
+.pendiente {
+  background: #f39c12;
+}
+
+.confirmado {
+  background: #27ae60;
+}
+
+.completado {
+  background: #3498db;
+}
+
+/* RESPONSIVE */
+
+@media (max-width: 768px) {
+
+  .admin-layout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+  }
+
+  .dashboard-cards {
+    justify-content: center;
+  }
+
+}
+
+.form-error { color: #b42318; margin: 0 0 20px; }
