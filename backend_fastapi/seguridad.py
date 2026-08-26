@@ -7,7 +7,10 @@ from passlib.context import CryptContext  # Librería para encriptar/verificar c
 
 
 # --- CONFIGURACIÓN DE SEGURIDAD Y JWT ---
-SECRET_KEY = "clave_secreta_super_segura_ga6"  # Clave privada para firmar los Tokens JWT (cambiar en producción)
+import os
+from dotenv import load_dotenv
+load_dotenv()
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"  # Algoritmo de encriptación simétrica para JWT
 ACCESS_TOKEN_EXPIRE_MINUTES = 60  # Tiempo de validez del Token en minutos
 
