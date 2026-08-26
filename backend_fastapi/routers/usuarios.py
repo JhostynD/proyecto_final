@@ -1,3 +1,4 @@
+import sqlite3  # Para capturar errores de integridad de la base de datos (correo duplicado)
 from database import obtener_conexion  # Función para abrir conexión a la BD de SQLite
 from fastapi import (
     APIRouter,
@@ -44,13 +45,23 @@ def registrar_usuario(usuario: schemas.UsuarioCreate):
     # Genera el hash encriptado de la contraseña usando bcrypt
     password_encriptada = obtener_password_hash(usuario.password)
 
-    # Inserta el nuevo usuario asignándole el rol por defecto 'usuario'
-    cursor.execute(
-        "INSERT INTO usuarios (nombre, email, password, rol) VALUES (?, ?, ?,"
-        " 'usuario')",
-        (usuario.nombre, usuario.email, password_encriptada),
-    )
-    conexion.commit()  # Guarda los cambios en la base de datos
+    # Inserta el nuevo usuario asignándole el rol por defecto 'usuario'.
+    # Se envuelve en try/except como segunda barrera: si dos personas se
+    # registran casi al mismo tiempo con el mismo correo, la restricción
+    # UNIQUE de la base de datos lo rechaza aunque el SELECT de arriba
+    # no lo haya detectado a tiempo.
+    try:
+        cursor.execute(
+            "INSERT INTO usuarios (nombre, email, password, rol) VALUES (?, ?, ?,"
+            " 'usuario')",
+            (usuario.nombre, usuario.email, password_encriptada),
+        )
+        conexion.commit()  # Guarda los cambios en la base de datos
+    except sqlite3.IntegrityError:
+        conexion.close()
+        raise HTTPException(
+            status_code=400, detail="El correo ya se encuentra registrado"
+        )
 
     # Recupera los datos del usuario recién registrado usando el último ID asignado
     usuario_id = cursor.lastrowid
