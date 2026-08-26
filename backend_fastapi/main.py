@@ -16,9 +16,10 @@ def al_iniciar():
     sembrar_datos() 
 
 
-# Conectar los routers con sus prefijos y etiquetas para Swagger
-app.include_router(turnos.router, prefix="/turnos", tags=["Turnos"])
-app.include_router(atenciones.router, prefix="/atenciones", tags=["Atenciones"])
+# turnos.py y atenciones.py ya definen su propio prefix dentro del APIRouter,
+# por eso aquí NO se repite (evita rutas duplicadas como /turnos/turnos)
+app.include_router(turnos.router)
+app.include_router(atenciones.router)
 app.include_router(usuarios.router, prefix="/usuarios", tags=["Usuarios"])
 
 
