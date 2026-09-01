@@ -1,7 +1,10 @@
 annotated-doc==0.0.5
 annotated-types==0.8.0
-anyio==4.14.2
+anyio==4.14.2<<<<<<< HEAD
 bcrypt==4.0.1
+=======
+bcrypt==4.3.0
+>>>>>>> eb2227ebea281ace63735b8c1a8eae978e92b889
 click==8.4.2
 colorama==0.4.6
 dnspython==2.8.0
