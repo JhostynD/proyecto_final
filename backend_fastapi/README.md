@@ -1,3 +1,15 @@
+# API Sistema de Gestión de Turnos
+
+- **URL de Producción (Render):** https://proyecto-final-4-2ps6.onrender.com
+- **Documentación Swagger Pública:** https://proyecto-final-4-2ps6.onrender.com/docs
+- **Endpoint de Salud (Health Check):** https://proyecto-final-4-2ps6.onrender.com/health
+
+---
+
+## ⚠️ Limitaciones Conocidas en Producción
+1. **Arranque en frío (Spin down):** Al estar hospedado en la capa gratuita de Render, la instancia se suspende tras 15 minutos de inactividad. La primera petición que se realice después de ese tiempo puede tardar cerca de 1 minuto en responder mientras el servidor enciende.
+2. **Almacenamiento Efímero (SQLite):** El sistema de archivos de Render es temporal en la capa gratuita. Cada vez que el servidor se reinicia o se despliega una nueva versión de la aplicación, los datos almacenados en la base de datos SQLite se resetean.
+
 ## 1. ¿Qué problema resuelve?
 
 Hoy, en un punto de atención al público, los turnos se manejan con papel o
