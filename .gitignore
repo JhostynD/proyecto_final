@@ -20,3 +20,7 @@ Thumbs.db
 
 .vscode/
 .idea/
+
+backend_fastapi/venv/
+backend_fastapi/*.db
+*.db
