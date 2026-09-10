@@ -31,47 +31,58 @@ una EPS) que necesitan un registro ordenado y consultable.
 pantalla pública mostrando el turno actual, reportes de estadísticas,
 varias sucursales.
 
-## 2. Cómo instalar y ejecutar el proyecto
+## 2. Variables de entorno requeridas
+
+Antes de ejecutar el proyecto, crea un archivo `.env` en `backend_fastapi/`
+a partir de `.env.example`, con estas claves:
+
+| Variable | Descripción |
+|---|---|
+| `SECRET_KEY` | Clave secreta para firmar los tokens JWT. Genera una con `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `ALGORITHM` | Algoritmo de firma JWT. Usar `HS256` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Minutos de validez del token (ej. `60`) |
+| `ADMIN_PASSWORD` | Contraseña del usuario administrador sembrado al iniciar |
+| `USER_PASSWORD` | Contraseña del usuario normal sembrado al iniciar |
+
+Sin `SECRET_KEY`, `ADMIN_PASSWORD` o `USER_PASSWORD` definidas, la aplicación
+no arranca (falla intencionalmente con un mensaje claro en vez de usar
+valores por defecto inseguros).
+
+## 3. Cómo instalar y ejecutar el proyecto
 
 ```bash
 cd backend_fastapi
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
+copy .env.example .env
+# Edita .env y coloca tus propios valores (ver sección 2)
 uvicorn main:app --reload
 ```
 
 Con el servidor corriendo, se puede probar todo desde:
 `http://127.0.0.1:8000/docs`
 
-## 3. Tabla de endpoints (todas las rutas que expone la API)
+## 4. Tabla de endpoints (todas las rutas que expone la API)
 
 | Método | Ruta | ¿Qué hace? | ¿Quién puede usarla? |
 |---|---|---|---|
 | POST | /usuarios/registro | Crea un usuario nuevo | Cualquiera |
 | POST | /usuarios/login | Inicia sesión y da un token | Cualquiera |
-
 | GET | /usuarios/ | Lista todos los usuarios | Solo admin |
 | GET | /usuarios/me | Muestra mi propio perfil | Usuario con sesión |
-
 | PUT | /usuarios/{id} | Edita un usuario | Solo admin |
 | DELETE | /usuarios/{id} | Elimina un usuario | Solo admin |
-
 | GET | /turnos | Lista todos los turnos | Cualquiera |
 | GET | /turnos/{id} | Muestra un turno específico | Cualquiera |
-
 | POST | /turnos | Crea un turno nuevo | Usuario con sesión |
 | PUT | /turnos/{id} | Edita un turno | Usuario con sesión |
-
 | DELETE | /turnos/{id} | Elimina un turno | Solo admin |
 | GET | /turnos/{id}/atenciones | Muestra un turno con sus atenciones juntas | Cualquiera |
-
 | GET | /atenciones | Lista todas las atenciones | Cualquiera |
 | GET | /atenciones/{id} | Muestra una atención específica | Cualquiera |
-
 | POST | /atenciones | Registra una atención nueva | Usuario con sesión |
 | PUT | /atenciones/{id} | Edita una atención | Usuario con sesión |
-
 | DELETE | /atenciones/{id} | Elimina una atención | Solo admin |
 
 Por qué existen 3 niveles de permiso:
@@ -82,7 +93,7 @@ Por qué existen 3 niveles de permiso:
 - Solo admin: para acciones delicadas como borrar información o
   gestionar usuarios, que no cualquiera debería poder hacer.
 
-## 4. Reglas de seguridad que sí o sí se cumplen
+## 5. Reglas de seguridad que sí o sí se cumplen
 
 - No se puede crear una atención para un turno que no existe (da error 400).
 - No se puede borrar un turno que ya tiene atenciones registradas (da error 400).
@@ -91,14 +102,14 @@ Por qué existen 3 niveles de permiso:
 - Si un usuario normal intenta usar una ruta de admin, da error 403.
 - Si pides algo que no existe (por ejemplo un turno con id 999), da error 404.
 
-## 5. Usuarios de ejemplo para probar
+## 6. Usuarios de ejemplo para probar
 
 | Correo | Contraseña | Rol |
 |---|---|---|
-| admin@correo.com | admin123 | admin |
-| user@correo.com | user123 | usuario |
+| admin@correo.com | `<< PON AQUÍ TU ADMIN_PASSWORD DE PRODUCCIÓN >>` | admin |
+| user@correo.com | `<< PON AQUÍ TU USER_PASSWORD DE PRODUCCIÓN >>` | usuario |
 
-## 6. Cómo están conectadas las tablas (modelo relacional)
+## 7. Cómo están conectadas las tablas (modelo relacional)
 
 ```
 usuarios
@@ -116,7 +127,7 @@ En palabras simples: cada atención "le pertenece" a un turno. Un turno
 puede tener cero, una o varias atenciones. Por eso `atenciones` tiene el
 campo `turno_id`, que apunta al turno al que corresponde.
 
-## 7. Ejemplo de flujo completo (para explicar en la sustentación)
+## 8. Ejemplo de flujo completo (para explicar en la sustentación)
 
 1. Un usuario se registra → `POST /usuarios/registro`
 2. Inicia sesión y recibe un token → `POST /usuarios/login`
@@ -126,3 +137,6 @@ campo `turno_id`, que apunta al turno al que corresponde.
 5. Cualquiera puede consultar el turno junto con su historial de
    atenciones → `GET /turnos/{id}/atenciones`
 6. Solo un administrador puede borrar el turno o eliminar usuarios.
+
+
+[QR hacia la documentación](./qr-docs.png)
