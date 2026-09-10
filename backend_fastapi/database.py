@@ -1,5 +1,6 @@
 # database.py
 import sqlite3
+import os
 
 DATABASE = "database.db"
 
@@ -51,38 +52,40 @@ def crear_tablas():
 
 
 def sembrar_datos():
-    # IMPORTACIÓN LOCAL AQUÍ PARA EVITAR EL BUCLE
     from seguridad import obtener_password_hash
+
+    admin_password = os.getenv("ADMIN_PASSWORD")
+    user_password = os.getenv("USER_PASSWORD")
+    if not admin_password or not user_password:
+        raise RuntimeError(
+            "ADMIN_PASSWORD y USER_PASSWORD deben estar definidas en el entorno."
+        )
 
     connection = obtener_conexion()
     cursor = connection.cursor()
 
     cursor.execute("SELECT COUNT(*) FROM usuarios")
     if cursor.fetchone()[0] == 0:
-        pass_hash = obtener_password_hash("admin123")
+        pass_hash = obtener_password_hash(admin_password)
         cursor.execute(
-            "INSERT INTO usuarios (nombre, email, password, rol) VALUES (?, ?,"
-            " ?, ?)",
+            "INSERT INTO usuarios (nombre, email, password, rol) VALUES (?, ?, ?, ?)",
             ("Administrador", "admin@correo.com", pass_hash, "admin"),
         )
 
-        user_hash = obtener_password_hash("user123")
+        user_hash = obtener_password_hash(user_password)
         cursor.execute(
-            "INSERT INTO usuarios (nombre, email, password, rol) VALUES (?, ?,"
-            " ?, ?)",
+            "INSERT INTO usuarios (nombre, email, password, rol) VALUES (?, ?, ?, ?)",
             ("Usuario Normal", "user@correo.com", user_hash, "usuario"),
         )
 
     cursor.execute("SELECT COUNT(*) FROM turnos")
     if cursor.fetchone()[0] == 0:
         cursor.execute(
-            "INSERT INTO turnos (numero, nombre_cliente, estado) VALUES (?, ?,"
-            " ?)",
+            "INSERT INTO turnos (numero, nombre_cliente, estado) VALUES (?, ?, ?)",
             (101, "Carlos Gómez", "atendido"),
         )
         cursor.execute(
-            "INSERT INTO turnos (numero, nombre_cliente, estado) VALUES (?, ?,"
-            " ?)",
+            "INSERT INTO turnos (numero, nombre_cliente, estado) VALUES (?, ?, ?)",
             (102, "Ana Martínez", "pendiente"),
         )
 
