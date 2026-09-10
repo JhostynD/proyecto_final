@@ -11,7 +11,12 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = "HS256"  # Algoritmo de encriptación simétrica para JWT
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY no está definida. Configúrala en tu archivo .env "
+        "(local) o en las variables de entorno de Render (producción)."
+    )
+ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60  # Tiempo de validez del Token en minutos
 
 # Instancia de Passlib configurada para usar el esquema de encriptación bcrypt[cite: 1]
