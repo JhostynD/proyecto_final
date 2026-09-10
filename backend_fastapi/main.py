@@ -1,7 +1,14 @@
 from database import crear_tablas, sembrar_datos
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import atenciones, turnos, usuarios
+from routers import (
+    atenciones,
+    estados_turno,
+    historial_turnos,
+    roles,
+    turnos,
+    usuarios,
+)
 
 app = FastAPI(
     title="API Sistema de Gestión de Turnos",
@@ -9,10 +16,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Configuración de CORS: se permite cualquier origen ("*") porque la API es
-# de uso público (consulta de turnos). No se usan cookies de sesión, sino
-# tokens Bearer en el header Authorization, por eso allow_credentials=False
-# (además, los navegadores prohíben combinar "*" con credentials=True).
+# Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,17 +26,20 @@ app.add_middleware(
 )
 
 
-# Crear las tablas e insertar datos iniciales (semilla) al iniciar la app
+# Crear las tablas e insertar datos iniciales al iniciar la app
 @app.on_event("startup")
 def al_iniciar():
     crear_tablas()
-    sembrar_datos() 
+    sembrar_datos()
 
 
 # Rutas de la API
 app.include_router(turnos.router)
 app.include_router(atenciones.router)
 app.include_router(usuarios.router, prefix="/usuarios", tags=["Usuarios"])
+app.include_router(roles.router)
+app.include_router(estados_turno.router)
+app.include_router(historial_turnos.router)
 
 
 @app.get("/", tags=["Inicio"])

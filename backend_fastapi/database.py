@@ -16,6 +16,14 @@ def crear_tablas():
     connection = obtener_conexion()
     cursor = connection.cursor()
 
+    # --- TABLA NUEVA: catálogo de roles ---
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL UNIQUE
+        )
+    """)
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,6 +31,14 @@ def crear_tablas():
             email TEXT NOT NULL UNIQUE,
             password TEXT NOT NULL,
             rol TEXT NOT NULL DEFAULT 'usuario'
+        )
+    """)
+
+    # --- TABLA NUEVA: catálogo de estados de turno ---
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS estados_turno (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL UNIQUE
         )
     """)
 
@@ -47,6 +63,18 @@ def crear_tablas():
         )
     """)
 
+    # --- TABLA NUEVA: historial de cambios de estado de un turno ---
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS historial_turnos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            turno_id INTEGER NOT NULL,
+            estado_anterior TEXT,
+            estado_nuevo TEXT NOT NULL,
+            fecha_cambio DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (turno_id) REFERENCES turnos(id)
+        )
+    """)
+
     connection.commit()
     connection.close()
 
@@ -63,6 +91,19 @@ def sembrar_datos():
 
     connection = obtener_conexion()
     cursor = connection.cursor()
+
+    # --- SIEMBRA NUEVA: catálogo de roles ---
+    cursor.execute("SELECT COUNT(*) FROM roles")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("INSERT INTO roles (nombre) VALUES (?)", ("admin",))
+        cursor.execute("INSERT INTO roles (nombre) VALUES (?)", ("usuario",))
+
+    # --- SIEMBRA NUEVA: catálogo de estados de turno ---
+    cursor.execute("SELECT COUNT(*) FROM estados_turno")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("INSERT INTO estados_turno (nombre) VALUES (?)", ("pendiente",))
+        cursor.execute("INSERT INTO estados_turno (nombre) VALUES (?)", ("atendido",))
+        cursor.execute("INSERT INTO estados_turno (nombre) VALUES (?)", ("cancelado",))
 
     cursor.execute("SELECT COUNT(*) FROM usuarios")
     if cursor.fetchone()[0] == 0:
@@ -88,6 +129,9 @@ def sembrar_datos():
             "INSERT INTO turnos (numero, nombre_cliente, estado) VALUES (?, ?, ?)",
             (102, "Ana Martínez", "pendiente"),
         )
+
+    # historial_turnos se deja vacía: se llena cuando el estado de un turno
+    # cambia de verdad (ver nota más abajo sobre cómo conectarla).
 
     connection.commit()
     connection.close()
