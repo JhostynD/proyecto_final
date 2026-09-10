@@ -9,13 +9,14 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Configuración Middleware de CORS
-# Se permite cualquier origen ("*") para facilitar la integración pública en producción.
-# Si fuera un entorno con mayor restricción, se especificarían las URLs del frontend autorizadas.
+# Configuración de CORS: se permite cualquier origen ("*") porque la API es
+# de uso público (consulta de turnos). No se usan cookies de sesión, sino
+# tokens Bearer en el header Authorization, por eso allow_credentials=False
+# (además, los navegadores prohíben combinar "*" con credentials=True).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
