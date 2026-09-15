@@ -19,9 +19,6 @@ from seguridad import (  # Funciones de autenticación, hashes y verificación d
 router = APIRouter()
 
 
-# ==============================================================================
-# 1. REGISTRAR USUARIO (Endpoint público)
-# ==============================================================================
 @router.post(
     "/registro",
     response_model=schemas.UsuarioResponse,  # Filtra la respuesta para no enviar la contraseña
@@ -75,9 +72,7 @@ def registrar_usuario(usuario: schemas.UsuarioCreate):
     return dict(nuevo_usuario)  # Convierte la fila SQLite a diccionario
 
 
-# ==============================================================================
-# 2. INICIAR SESIÓN / LOGIN (Endpoint público)
-# ==============================================================================
+
 @router.post(
     "/login",
     response_model=schemas.TokenResponse,  # Responde con el token JWT en formato JSON
@@ -111,9 +106,7 @@ def login(credenciales: schemas.UsuarioLogin):
     return {"access_token": token, "token_type": "bearer"}
 
 
-# ==============================================================================
-# 3. LISTAR USUARIOS (Protegido - Requiere ROL admin)
-# ==============================================================================
+
 @router.get(
     "/",
     response_model=list[
@@ -137,9 +130,7 @@ def listar_usuarios(
     ]  # Mapea todas las filas SQLite a lista de diccionarios
 
 
-# ==============================================================================
-# 4. OBTENER MI PERFIL (Protegido - Cualquier usuario autenticado)
-# ==============================================================================
+
 @router.get(
     "/me",
     response_model=schemas.UsuarioResponse,
@@ -151,9 +142,7 @@ def obtener_mi_perfil(
     return usuario_actual  # Retorna el usuario inyectado desde la dependencia de seguridad
 
 
-# ==============================================================================
-# 5. ACTUALIZAR USUARIO (Protegido - Requiere ROL admin)
-# ==============================================================================
+
 @router.put(
     "/{usuario_id}",
     response_model=schemas.UsuarioResponse,
@@ -194,9 +183,7 @@ def actualizar_usuario(
     return dict(usuario_actualizado)
 
 
-# ==============================================================================
-# 6. ELIMINAR USUARIO (Protegido - Requiere ROL admin)
-# ==============================================================================
+
 @router.delete(
     "/{usuario_id}",
     status_code=status.HTTP_200_OK,
