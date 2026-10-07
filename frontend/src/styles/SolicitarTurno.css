@@ -1,53 +1,843 @@
-.turno-container {
-  min-height: 80vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background: #f5f7fa;
-  padding: 30px;
-}
+/* ==============================================================
+   SolicitarTurno.css — Apple Human Interface Design System
+   ============================================================== */
 
-.turno-card {
+.turno-main-container {
+  flex: 1;
+  padding: 50px 24px 80px;
+  background-color: var(--bg-canvas);
+  box-sizing: border-box;
   width: 100%;
-  max-width: 500px;
-  background: white;
-  padding: 30px;
-  border-radius: 15px;
-  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
 }
 
-.turno-card h2 {
+.turno-shell {
+  max-width: 680px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.turno-page-header {
   text-align: center;
-  color: #003366;
-  margin-bottom: 25px;
+  margin-bottom: 36px;
+  box-sizing: border-box;
 }
 
-.turno-card form {
+.turno-eyebrow {
+  display: inline-block;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+.turno-title {
+  font-size: clamp(1.8rem, 3.5vw, 2.4rem);
+  font-weight: 700;
+  letter-spacing: -0.028em;
+  line-height: 1.12;
+  text-wrap: balance;
+  margin-bottom: 10px;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.turno-desc {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  text-wrap: balance;
+}
+
+.turno-card-wrapper {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: 36px 32px;
+  box-shadow: var(--shadow-sm);
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+
+.turno-form {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 28px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  color-scheme: light;
 }
 
-.turno-card input,
-.turno-card select {
-  padding: 12px;
-  border: 1px solid #ccc;
-  border-radius: 8px;
+@media (prefers-color-scheme: dark) {
+  .turno-form {
+    color-scheme: dark;
+  }
 }
 
-.turno-card button {
-  padding: 12px;
-  border: none;
-  border-radius: 8px;
-  background: #0066cc;
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+
+.section-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.94rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.label-required {
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+
+.step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: background 200ms, color 200ms;
+}
+
+.step-badge.active {
+  background: var(--accent);
   color: white;
-  font-weight: bold;
+}
+
+/* ── Servicio Info Card ─────────────────────────────────────────── */
+.servicio-info-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: fadeIn 180ms var(--spring-ease);
+}
+
+.servicio-info-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.servicio-info-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-subtle);
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+}
+
+.servicio-duracion-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+}
+
+.servicio-descripcion {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* ── Modalidad Selector (turno_y_cita) ──────────────────────────── */
+.modalidad-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modalidad-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: all 140ms var(--spring-ease);
+  position: relative;
+}
+
+.modalidad-option:hover {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.modalidad-option.selected {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.modalidad-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.modalidad-option.selected .modalidad-icon {
+  background: var(--accent);
+  color: white;
+}
+
+.modalidad-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.modalidad-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.modalidad-desc {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.modalidad-check {
+  font-size: 16px;
+  color: var(--accent);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* ── Turno Virtual Info Box ──────────────────────────────────────── */
+.turno-virtual-info-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-glow);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  animation: fadeIn 200ms var(--spring-ease);
+}
+
+.turno-virtual-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.turno-virtual-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.turno-virtual-texto strong {
+  font-size: 0.94rem;
+  color: var(--accent);
+}
+
+.turno-virtual-texto p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin: 0;
+}
+
+/* ── Native Controls Styling (iOS & Desktop) ─────────────────────── */
+.apple-select,
+.apple-date-input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  font-size: 16px; /* Prevents auto-zoom in iOS Safari */
+  color: var(--text-primary);
+  font-family: inherit;
+  line-height: normal;
+  display: block;
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+/* Select Nativo con icono Chevron Apple SVG elegante */
+.apple-select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2359595e' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 16px 16px;
+  padding-right: 42px;
   cursor: pointer;
 }
 
-.turno-card button:hover {
-  background: #004c99;
+@media (prefers-color-scheme: dark) {
+  .apple-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a1a1a6' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  }
 }
 
-.form-error { color: #c0392b; margin: 0; text-align: center; }
-.form-success { color: #1e8449; margin: 0; text-align: center; }
+.apple-select:focus,
+.apple-date-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.apple-select:disabled,
+.apple-date-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: var(--bg-secondary);
+}
+
+.availability-loading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.slot-hint-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-secondary);
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  line-height: 1.45;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.slot-hint-box svg {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+
+.slot-hint-empty {
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  color: var(--status-cancelled-text, #dc2626);
+}
+
+.slot-hint-empty svg {
+  color: var(--status-cancelled-text, #dc2626);
+}
+
+/* ── Time Slots Grid & Chips ─────────────────────────────────────── */
+.time-slots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.time-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.92rem;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: all 120ms var(--spring-ease);
+  cursor: pointer;
+}
+
+.time-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
+.time-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.time-chip.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--accent);
+  transform: scale(1.02);
+}
+
+.time-chip.selected .time-text {
+  color: white;
+  font-weight: 700;
+}
+
+.slots-count-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin: 0;
+  padding-top: 2px;
+}
+
+/* ── Booking Summary Card ────────────────────────────────────────── */
+.booking-summary-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  box-sizing: border-box;
+  width: 100%;
+  animation: fadeIn 200ms var(--spring-ease);
+}
+
+.summary-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.summary-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.summary-lbl {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.summary-turno-nota {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--accent);
+  font-weight: 600;
+  width: 100%;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border-subtle);
+}
+
+/* ── Success Banner on Submit ────────────────────────────────────── */
+.turno-success-banner {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-sizing: border-box;
+  width: 100%;
+  animation: fadeIn 240ms var(--spring-ease);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.success-banner-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.success-icon-badge {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.15);
+  color: #059669;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.success-banner-title {
+  font-size: 1.18rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #047857;
+  margin-bottom: 2px;
+  word-break: break-word;
+}
+
+.success-banner-sub {
+  font-size: 13px;
+  color: #065f46;
+}
+
+.success-banner-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.success-detail-pill {
+  background: var(--bg-surface);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.detail-lbl {
+  font-weight: 700;
+  color: #047857;
+  margin-right: 4px;
+}
+
+.success-redirecting-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #047857;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(16, 185, 129, 0.2);
+}
+
+.success-redirecting-box .spinner-indicator {
+  border-color: rgba(5, 150, 105, 0.2);
+  border-top-color: #059669;
+}
+
+/* ── Primary Submit Button ───────────────────────────────────────── */
+.btn-submit-turno {
+  width: 100%;
+  max-width: 100%;
+  min-height: 48px;
+  padding: 14px 24px;
+  background: var(--accent);
+  color: white;
+  border-radius: var(--radius-pill);
+  font-size: 16px;
+  font-weight: 600;
+  box-shadow: var(--btn-primary-shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: all var(--transition-fast);
+}
+
+.btn-submit-turno:hover:not(:disabled) {
+  background: var(--accent-hover);
+  box-shadow: var(--btn-primary-shadow-hover);
+}
+
+.btn-submit-turno:active:not(:disabled) {
+  transform: scale(0.97);
+  box-shadow: var(--btn-primary-shadow-active);
+}
+
+.btn-submit-turno:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-loading-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Responsive Mobile (max-width: 640px) ─────────────────────────── */
+@media (max-width: 640px) {
+  .turno-main-container {
+    padding: 32px 16px 60px;
+  }
+
+  .turno-page-header {
+    margin-bottom: 24px;
+    padding: 0 4px;
+  }
+
+  .turno-eyebrow {
+    font-size: 13px;
+  }
+
+  .turno-title {
+    font-size: clamp(1.5rem, 5.5vw, 1.85rem);
+    margin-bottom: 8px;
+  }
+
+  .turno-desc {
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .turno-card-wrapper {
+    padding: 24px 18px;
+    border-radius: var(--radius-lg);
+  }
+
+  .turno-form {
+    gap: 22px;
+  }
+
+  .section-label {
+    font-size: 15px;
+  }
+
+  .step-badge {
+    width: 22px;
+    height: 22px;
+    font-size: 13px;
+  }
+
+  .apple-select,
+  .apple-date-input {
+    font-size: 16px;
+    min-height: 48px;
+    padding: 12px 14px;
+  }
+
+  .apple-select {
+    padding-right: 38px;
+  }
+
+  .modalidad-option {
+    padding: 14px 14px;
+    gap: 12px;
+  }
+
+  .modalidad-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .modalidad-name {
+    font-size: 0.9rem;
+  }
+
+  .modalidad-desc {
+    font-size: 12px;
+  }
+
+  .turno-virtual-info-box {
+    padding: 14px 14px;
+    gap: 12px;
+  }
+
+  .turno-virtual-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .slot-hint-box {
+    font-size: 13px;
+    padding: 14px 12px;
+    line-height: 1.45;
+  }
+
+  .time-slots-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .time-chip {
+    min-height: 44px;
+    padding: 8px 4px;
+  }
+
+  .time-chip .time-text {
+    font-size: 14px;
+  }
+
+  .booking-summary-card {
+    padding: 14px 16px;
+  }
+
+  .summary-title {
+    font-size: 13px;
+  }
+
+  .summary-details {
+    flex-direction: column;
+    gap: 8px;
+    font-size: 14px;
+  }
+
+  .btn-submit-turno {
+    font-size: 16px;
+    min-height: 48px;
+    padding: 13px 18px;
+  }
+
+  .turno-success-banner {
+    padding: 20px 16px;
+  }
+
+  .success-banner-title {
+    font-size: 1.1rem;
+  }
+
+  .success-banner-sub {
+    font-size: 13px;
+  }
+
+  .success-banner-details {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .success-detail-pill {
+    width: 100%;
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+
+  .form-error {
+    font-size: 13px;
+  }
+}
+
+/* ── Narrow Mobile (max-width: 380px) ─────────────────────────────── */
+@media (max-width: 380px) {
+  .turno-main-container {
+    padding: 24px 12px 50px;
+  }
+
+  .turno-page-header {
+    margin-bottom: 20px;
+  }
+
+  .turno-title {
+    font-size: 1.45rem;
+  }
+
+  .turno-card-wrapper {
+    padding: 20px 12px;
+    border-radius: var(--radius-md);
+  }
+
+  .turno-form {
+    gap: 20px;
+  }
+
+  .time-slots-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .time-chip {
+    min-height: 44px;
+    padding: 6px 2px;
+  }
+
+  .time-chip .time-text {
+    font-size: 13px;
+  }
+
+  .apple-select {
+    padding-right: 34px;
+    background-position: right 10px center;
+  }
+
+  .btn-submit-turno {
+    padding: 13px 12px;
+    font-size: 15px;
+    letter-spacing: -0.01em;
+  }
+
+  .modalidad-option {
+    padding: 12px 12px;
+    gap: 10px;
+  }
+
+  .modalidad-icon {
+    width: 32px;
+    height: 32px;
+  }
+}

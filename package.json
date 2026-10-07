@@ -1,0 +1,16 @@
+{
+  "name": "fila-cero",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sistema de Turnos Virtuales - Monorepo",
+  "scripts": {
+    "dev": "concurrently -n \"BACK,FRONT\" -c \"yellow.bold,blue.bold\" \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "lint": "npm run lint --prefix frontend",
+    "build": "npm run build --prefix frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}

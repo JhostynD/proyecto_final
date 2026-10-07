@@ -1,28 +1,489 @@
- :root {
-  --azul-900: #12305a;
-  --azul-700: #1d5fa7;
-  --azul-500: #2988d8;
-  --fondo: #f3f7fc;
-  --texto: #1d2939;
-  --borde: #d9e2ef;
-  --sombra: 0 12px 28px rgba(18, 48, 90, 0.1);
+:root {
+  color-scheme: light;
+
+  /* Typography Cascade */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, system-ui, sans-serif;
+
+  /* Canvas & Surfaces (Apple Canvas Light: #fbfbfd) */
+  --bg-canvas: #fbfbfd;
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #ffffff;
+  --bg-secondary: #f5f5f7;
+  --bg-tertiary: #e5e5ea;
+
+  /* Text & Labels (Apple System Hierarchy - WCAG AA compliant >= 4.5:1) */
+  --text-primary: #1d1d1f;
+  --text-secondary: #59595e;
+  --text-tertiary: #6e6e73;
+  --text-quaternary: #8e8e93;
+
+  /* Brand / Apple Blue */
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --accent-active: #0062c4;
+  --accent-subtle: rgba(0, 113, 227, 0.08);
+  --accent-glow: rgba(0, 113, 227, 0.12);
+
+  /* Primary Button Subtle Depth */
+  --btn-primary-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 113, 227, 0.12);
+  --btn-primary-shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.1), 0 4px 10px rgba(0, 113, 227, 0.18);
+  --btn-primary-shadow-active: 0 1px 2px rgba(0, 0, 0, 0.12);
+
+  /* Borders & Dividers */
+  --border-subtle: rgba(0, 0, 0, 0.08);
+  --border-medium: rgba(0, 0, 0, 0.14);
+  --border-active: #0071e3;
+
+  /* Shadows - Organic Apple Depth */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.05), 0 2px 6px rgba(0, 0, 0, 0.02);
+  --shadow-lg: 0 14px 34px rgba(0, 0, 0, 0.07), 0 4px 12px rgba(0, 0, 0, 0.03);
+  --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.06);
+
+  /* Radii (Apple Continuous Squircle 12-20px) */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 20px;
+  --radius-pill: 980px;
+
+  /* Semantic Status Colors (Queue & Operations) */
+  --status-pending-bg: rgba(245, 158, 11, 0.12);
+  --status-pending-text: #b45309;
+  --status-pending-dot: #f59e0b;
+
+  --status-confirmed-bg: rgba(16, 185, 129, 0.12);
+  --status-confirmed-text: #047857;
+  --status-confirmed-dot: #10b981;
+
+  --status-completed-bg: rgba(0, 113, 227, 0.12);
+  --status-completed-text: #0071e3;
+  --status-completed-dot: #0071e3;
+
+  --status-cancelled-bg: rgba(239, 68, 68, 0.12);
+  --status-cancelled-text: #b91c1c;
+  --status-cancelled-dot: #ef4444;
+
+  /* Queue states (Clean Apple Blue / Amber / Cyan, no purples) */
+  --status-en-espera-bg: rgba(0, 113, 227, 0.10);
+  --status-en-espera-text: #0071e3;
+  --status-en-espera-dot: #0071e3;
+
+  --status-llamando-bg: rgba(249, 115, 22, 0.12);
+  --status-llamando-text: #c2410c;
+  --status-llamando-dot: #f97316;
+
+  --status-en-atencion-bg: rgba(6, 182, 212, 0.12);
+  --status-en-atencion-text: #0e7490;
+  --status-en-atencion-dot: #06b6d4;
+
+  --status-no-presentado-bg: rgba(100, 116, 139, 0.12);
+  --status-no-presentado-text: #475569;
+  --status-no-presentado-dot: #94a3b8;
+
+  /* Transitions (Critically damped §4 / §7) */
+  --spring-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-fast: 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-normal: 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-* {
+/* ── Dark Mode (prefers-color-scheme: dark) ─────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg-canvas: #000000;
+    --bg-surface: #1c1c1e;
+    --bg-surface-elevated: #2c2c2e;
+    --bg-secondary: #2c2c2e;
+    --bg-tertiary: #3a3a3c;
+
+    --text-primary: #f5f5f7;
+    --text-secondary: #a1a1a6;
+    --text-tertiary: #8e8e93;
+    --text-quaternary: #636366;
+
+    --accent: #2997ff;
+    --accent-hover: #47a6ff;
+    --accent-active: #147ce5;
+    --accent-subtle: rgba(41, 151, 255, 0.15);
+    --accent-glow: rgba(41, 151, 255, 0.16);
+
+    /* Primary Button Subtle Depth - Dark Mode */
+    --btn-primary-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(41, 151, 255, 0.16);
+    --btn-primary-shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.45), 0 4px 10px rgba(41, 151, 255, 0.22);
+    --btn-primary-shadow-active: 0 1px 2px rgba(0, 0, 0, 0.4);
+
+    --border-subtle: rgba(255, 255, 255, 0.12);
+    --border-medium: rgba(255, 255, 255, 0.20);
+    --border-active: #2997ff;
+
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 14px 34px rgba(0, 0, 0, 0.7);
+    --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.85);
+
+    --status-pending-bg: rgba(245, 158, 11, 0.18);
+    --status-pending-text: #fbbf24;
+    --status-pending-dot: #f59e0b;
+
+    --status-confirmed-bg: rgba(16, 185, 129, 0.18);
+    --status-confirmed-text: #34d399;
+    --status-confirmed-dot: #10b981;
+
+    --status-completed-bg: rgba(41, 151, 255, 0.18);
+    --status-completed-text: #60a5fa;
+    --status-completed-dot: #2997ff;
+
+    --status-cancelled-bg: rgba(239, 68, 68, 0.18);
+    --status-cancelled-text: #f87171;
+    --status-cancelled-dot: #ef4444;
+
+    --status-en-espera-bg: rgba(41, 151, 255, 0.15);
+    --status-en-espera-text: #93c5fd;
+    --status-en-espera-dot: #2997ff;
+
+    --status-llamando-bg: rgba(249, 115, 22, 0.18);
+    --status-llamando-text: #fb923c;
+    --status-llamando-dot: #f97316;
+
+    --status-en-atencion-bg: rgba(6, 182, 212, 0.18);
+    --status-en-atencion-text: #22d3ee;
+    --status-en-atencion-dot: #06b6d4;
+
+    --status-no-presentado-bg: rgba(100, 116, 139, 0.18);
+    --status-no-presentado-text: #94a3b8;
+    --status-no-presentado-dot: #64748b;
+  }
+}
+
+*, *::before, *::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+  background-color: var(--bg-canvas);
+}
+
+/* Typography — Unified Apple System Cascade (§4 / §15) */
 body {
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, system-ui, sans-serif;
+  line-height: 1.5;
+  letter-spacing: -0.003em;
   overflow-x: hidden;
-  background: var(--fondo);
-  color: var(--texto);
+  min-height: 100vh;
 }
 
-button, input, select { font: inherit; }
-button { transition: transform 160ms ease, background-color 160ms ease, box-shadow 160ms ease; }
-button:not(:disabled):hover { transform: translateY(-1px); }
-button:disabled { cursor: not-allowed; opacity: 0.65; }
-button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid #93c5fd; outline-offset: 3px; }
+/* Optical Typography Hierarchy & Balanced Wrap (§3 / §15) */
+h1 {
+  color: var(--text-primary);
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.028em;
+  text-wrap: balance;
+}
+
+h2 {
+  color: var(--text-primary);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+}
+
+h3 {
+  color: var(--text-primary);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.016em;
+  text-wrap: balance;
+}
+
+h4, h5, h6 {
+  color: var(--text-primary);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+p {
+  color: var(--text-secondary);
+  line-height: 1.5;
+  letter-spacing: -0.002em;
+}
+
+/* Buttons — Direct Physical Feedback (§1) */
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-weight: 600;
+  transition: transform 100ms ease-out, background-color var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast);
+}
+
+button:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Accessible Focus Visible */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Form Controls Base */
+input, select, textarea {
+  width: 100%;
+  color: var(--text-primary);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 11px 15px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+}
+
+@media (max-width: 640px) {
+  input, select, textarea {
+    font-size: 16px; /* Prevents auto-zoom in iOS Safari */
+  }
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+/* Universal Status Badges */
+.estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+}
+
+.estado::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.estado.pendiente {
+  background: var(--status-pending-bg);
+  color: var(--status-pending-text);
+}
+.estado.pendiente::before {
+  background: var(--status-pending-dot);
+}
+
+.estado.confirmado {
+  background: var(--status-confirmed-bg);
+  color: var(--status-confirmed-text);
+}
+.estado.confirmado::before {
+  background: var(--status-confirmed-dot);
+}
+
+.estado.completado {
+  background: var(--status-completed-bg);
+  color: var(--status-completed-text);
+}
+.estado.completado::before {
+  background: var(--status-completed-dot);
+}
+
+.estado.cancelado {
+  background: var(--status-cancelled-bg);
+  color: var(--status-cancelled-text);
+}
+.estado.cancelado::before {
+  background: var(--status-cancelled-dot);
+}
+
+.estado.en_espera {
+  background: var(--status-en-espera-bg);
+  color: var(--status-en-espera-text);
+}
+.estado.en_espera::before {
+  background: var(--status-en-espera-dot);
+}
+
+.estado.llamando {
+  background: var(--status-llamando-bg);
+  color: var(--status-llamando-text);
+  animation: pulse-badge 1.5s ease-in-out infinite;
+}
+.estado.llamando::before {
+  background: var(--status-llamando-dot);
+}
+
+.estado.en_atencion {
+  background: var(--status-en-atencion-bg);
+  color: var(--status-en-atencion-text);
+}
+.estado.en_atencion::before {
+  background: var(--status-en-atencion-dot);
+}
+
+.estado.no_presentado {
+  background: var(--status-no-presentado-bg);
+  color: var(--status-no-presentado-text);
+}
+.estado.no_presentado::before {
+  background: var(--status-no-presentado-dot);
+}
+
+@keyframes pulse-badge {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.68; }
+}
+
+/* Spinner Utility */
+.spinner-indicator {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 600ms linear infinite;
+  flex-shrink: 0;
+}
+
+.spinner-indicator.small {
+  width: 14px;
+  height: 14px;
+}
+
+.spinner-indicator.large {
+  width: 26px;
+  height: 26px;
+  border-width: 2.5px;
+  border-color: var(--border-medium);
+  border-top-color: var(--accent);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Global Form Message Callouts */
+.form-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.22);
+  color: var(--status-cancelled-text);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  font-weight: 500;
+  animation: fadeIn 180ms var(--spring-ease);
+}
+
+.form-success {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  color: var(--status-confirmed-text);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  font-weight: 500;
+  animation: fadeIn 180ms var(--spring-ease);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Accessibility (§14) ────────────────────────────────────────────── */
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  button:not(:disabled):active {
+    transform: none !important;
+  }
+}
+
+/* Reduced transparency preference */
+@media (prefers-reduced-transparency: reduce) {
+  .navbar-wrapper,
+  .navbar-collapse,
+  .ticket-card,
+  .live-card,
+  .apple-table,
+  .turnos-view-container {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--bg-surface) !important;
+  }
+}
+
+/* High contrast preference */
+@media (prefers-contrast: more) {
+  :root {
+    --border-subtle: rgba(0, 0, 0, 0.4);
+    --border-medium: rgba(0, 0, 0, 0.7);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --border-subtle: rgba(255, 255, 255, 0.45);
+      --border-medium: rgba(255, 255, 255, 0.75);
+    }
+  }
+  button, input, select {
+    border-width: 1.5px !important;
+  }
+}
