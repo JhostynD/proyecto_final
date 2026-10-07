@@ -1,6 +1,4 @@
-
 node_modules/
-
 
 .env
 .env.*
@@ -8,7 +6,6 @@ node_modules/
 
 dist/
 coverage/
-
 
 *.log
 npm-debug.log*
@@ -24,5 +21,7 @@ Thumbs.db
 backend_fastapi/venv/
 backend_fastapi/*.db
 *.db
+__pycache__/
+*.pyc
 
 .agents/
