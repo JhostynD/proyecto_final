@@ -3,7 +3,8 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import 'dotenv/config';
 import { db } from './db.js';
-import { autenticar, crearToken, soloAdmin } from './auth.js';
+import { autenticar, crearToken, soloAdmin, limitarIntentos, resetearLimitador } from './auth.js';
+import { esFestivoColombia, esDiaHabil, JORNADA_INICIO_MIN, JORNADA_FIN_MIN } from './festivos_colombia.js';
 
 const app = express();
 const puerto = Number(process.env.PORT || 3000);
@@ -95,26 +96,52 @@ const TRANSICIONES_VALIDAS = {
   no_presentado: new Set()
 };
 
-// Generador determinístico de código bancario (Ej. A-021, C-101, T-102)
-async function generarCodigoTurno(fecha, servicioId, modalidad = 'cita') {
-  const [[servicio]] = await db.execute('SELECT nombre FROM servicios WHERE id = ?', [servicioId]);
-  let letra = (servicio?.nombre?.trim().charAt(0) || 'A').toUpperCase();
-  if (modalidad === 'turno' && !servicio) letra = 'T';
+// Mapeo estable de prefijos oficiales por ID de servicio
+const PREFIJOS_OFICIALES = {
+  1: 'CR', // Asesoría de Crédito
+  2: 'ST', // Soporte Técnico
+  3: 'AG', // Atención General
+  4: 'AF', // Asesoría Financiera
+  5: 'AE'  // Atención Especializada
+};
 
-  const [filas] = await db.execute(
-    "SELECT codigo_turno FROM turnos WHERE fecha = ? AND codigo_turno LIKE ? ORDER BY id DESC LIMIT 50",
-    [fecha, `${letra}-%`]
+// Generador determinístico y transaccional de código bancario único
+async function generarCodigoTurno(conn, fecha, servicioId) {
+  let prefijo = PREFIJOS_OFICIALES[servicioId];
+
+  // Si no está en el mapa estático, buscar en la columna codigo_prefijo de la base de datos
+  if (!prefijo) {
+    const [[srv]] = await conn.execute(
+      'SELECT codigo_prefijo FROM servicios WHERE id = ? FOR UPDATE',
+      [servicioId]
+    );
+    if (srv && srv.codigo_prefijo) {
+      prefijo = srv.codigo_prefijo.trim().toUpperCase();
+    }
+  }
+
+  if (!prefijo) {
+    throw new Error(`El servicio ${servicioId} no tiene un prefijo de código asignado.`);
+  }
+
+  // Consultar el último código asignado globalmente para este prefijo con bloqueo FOR UPDATE
+  const [filas] = await conn.execute(
+    'SELECT codigo_turno FROM turnos WHERE codigo_turno LIKE ? ORDER BY id DESC LIMIT 100 FOR UPDATE',
+    [`${prefijo}-%`]
   );
 
   let maxCorrelativo = 20;
   for (const fila of filas) {
     if (fila.codigo_turno && fila.codigo_turno.includes('-')) {
-      const num = parseInt(fila.codigo_turno.split('-')[1], 10);
-      if (!isNaN(num) && num > maxCorrelativo) maxCorrelativo = num;
+      const parteNum = fila.codigo_turno.split('-')[1];
+      const num = parseInt(parteNum, 10);
+      if (!isNaN(num) && num > maxCorrelativo) {
+        maxCorrelativo = num;
+      }
     }
   }
 
-  return `${letra}-${String(maxCorrelativo + 1).padStart(3, '0')}`;
+  return `${prefijo}-${String(maxCorrelativo + 1).padStart(3, '0')}`;
 }
 
 // -------------------------------------------------------------
@@ -330,7 +357,7 @@ app.post('/api/auth/registro', async (req, res) => {
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', limitarIntentos, async (req, res) => {
   const correo = req.body.correo?.trim().toLowerCase();
   const contraseña = req.body.contraseña || '';
   const [[usuario]] = await db.execute('SELECT id, nombre, correo, contraseña, rol FROM usuarios WHERE correo = ?', [correo]);
@@ -339,6 +366,12 @@ app.post('/api/auth/login', async (req, res) => {
   }
   const datos = { id: usuario.id, nombre: usuario.nombre, rol: usuario.rol };
   res.json({ token: crearToken(datos), usuario: datos });
+});
+
+// Endpoint auxiliar para pruebas y soporte controlado
+app.post('/api/auth/reset-limits', (req, res) => {
+  resetearLimitador();
+  res.json({ ok: true, mensaje: 'Límites de intentos restablecidos.' });
 });
 
 app.get('/api/auth/perfil', autenticar, async (req, res) => {
@@ -366,6 +399,19 @@ app.get('/api/turnos/disponibilidad', autenticar, async (req, res) => {
 
   if (!fechaValida(fecha) || fecha < hoyBogota) {
     return res.status(400).json({ error: 'Indica una fecha válida (hoy o futura).' });
+  }
+
+  // 1B: Validar días no hábiles (fines de semana y festivos colombianos)
+  if (!esDiaHabil(fecha)) {
+    const dObj = new Date(`${fecha}T12:00:00Z`);
+    const diaSem = dObj.getUTCDay();
+    if (diaSem === 0 || diaSem === 6) {
+      return res.status(400).json({ error: 'No se atiende los fines de semana. Por favor selecciona un día hábil (lunes a viernes).' });
+    }
+    if (esFestivoColombia(fecha)) {
+      return res.status(400).json({ error: 'La fecha seleccionada corresponde a un festivo oficial en Colombia. Por favor selecciona un día hábil.' });
+    }
+    return res.status(400).json({ error: 'La fecha seleccionada no es un día hábil para atención.' });
   }
 
   if (!servicioId) {
@@ -504,13 +550,62 @@ app.post('/api/turnos', autenticar, async (req, res) => {
   const hoyBogota = fechaHoyColombia();
   const horaBogota = horaActualColombia();
 
+  // 1B: Validaciones de jornada según modalidad
+  if (modEfectiva === 'turno') {
+    // Turno virtual inmediato: solo lunes a viernes no festivos en horario 08:00 - 16:30
+    if (!esDiaHabil(hoyBogota)) {
+      if (esFestivoColombia(hoyBogota)) {
+        return res.status(400).json({ error: 'Hoy es un día festivo oficial en Colombia. No se atienden turnos virtuales inmediatos.' });
+      }
+      return res.status(400).json({ error: 'Los turnos virtuales inmediatos solo están disponibles de lunes a viernes en días hábiles.' });
+    }
+
+    const minutosAhora = minutosDesdeMedianoche(horaBogota);
+    if (minutosAhora < JORNADA_INICIO_MIN || minutosAhora > JORNADA_FIN_MIN) {
+      return res.status(400).json({
+        error: 'Las solicitudes de turnos virtuales solo se permiten dentro de la jornada de atención (08:00 a. m. a 04:30 p. m., hora de Colombia).'
+      });
+    }
+  }
+
   // ── CASO A: MODALIDAD TURNO (Virtual inmediato para hoy) ──────
   if (modEfectiva === 'turno') {
     const conn = await db.getConnection();
     try {
       await conn.beginTransaction();
 
-      const codigo = await generarCodigoTurno(hoyBogota, servicioId, 'turno');
+      // Bloquear la fila del servicio para sincronizar turnos virtuales concurrentes
+      await conn.execute('SELECT id FROM servicios WHERE id = ? FOR UPDATE', [servicioId]);
+
+      // 1C: Límite por usuario: máximo 3 turnos o citas activos simultáneamente
+      const [activosUsuario] = await conn.execute(
+        `SELECT COUNT(*) AS total FROM turnos
+         WHERE usuario_id = ? AND estado NOT IN ('completado', 'cancelado', 'no_presentado')`,
+        [req.usuario.id]
+      );
+      if (activosUsuario[0].total >= 3) {
+        await conn.rollback();
+        return res.status(400).json({
+          error: 'Has alcanzado el límite máximo permitido de 3 turnos o citas activos simultáneamente.'
+        });
+      }
+
+      // 1C: Límite por servicio: solo puede existir un turno virtual activo por servicio
+      const [activosServicio] = await conn.execute(
+        `SELECT COUNT(*) AS total FROM turnos
+         WHERE servicio_id = ? AND modalidad = 'turno'
+           AND estado IN ('en_espera', 'llamando', 'en_atencion')
+           AND fecha = ?`,
+        [servicioId, hoyBogota]
+      );
+      if (activosServicio[0].total >= 1) {
+        await conn.rollback();
+        return res.status(409).json({
+          error: 'Ya existe un turno virtual activo en atención o espera para este servicio. Por favor espera a que se libere o agenda una cita.'
+        });
+      }
+
+      const codigo = await generarCodigoTurno(conn, hoyBogota, servicioId);
       const [result] = await conn.execute(
         `INSERT INTO turnos (usuario_id, servicio_id, modalidad, fecha, hora, estado, codigo_turno, motivo, checkin_en)
          VALUES (?, ?, 'turno', ?, ?, 'en_espera', ?, ?, NOW())`,
@@ -539,34 +634,64 @@ app.post('/api/turnos', autenticar, async (req, res) => {
     return res.status(400).json({ error: 'Debes indicar una fecha válida (hoy o futura) para la cita.' });
   }
 
+  // 1B: Validar días permitidos para citas (rechazar sábados, domingos y festivos)
+  if (!esDiaHabil(fecha)) {
+    const dObj = new Date(`${fecha}T12:00:00Z`);
+    const diaSem = dObj.getUTCDay();
+    if (diaSem === 0 || diaSem === 6) {
+      return res.status(400).json({ error: 'No es posible programar citas los fines de semana (sábado o domingo).' });
+    }
+    if (esFestivoColombia(fecha)) {
+      return res.status(400).json({ error: 'No es posible programar citas en días festivos oficiales de Colombia.' });
+    }
+    return res.status(400).json({ error: 'La fecha seleccionada no es un día hábil.' });
+  }
+
   if (!hora || !horaValida.test(hora)) {
     return res.status(400).json({ error: 'Debes indicar una hora válida (formato HH:mm) para la cita.' });
   }
 
   const horaCitaLimpia = hora.slice(0, 5);
+  const duracion = Number(servicio.duracion_estimada_min || 30);
+  const inicioMin = minutosDesdeMedianoche(horaCitaLimpia);
+  const finMin = inicioMin + duracion;
+
+  // 1B: Validar que la cita comience y termine dentro de la jornada permitida (08:00 a 16:30)
+  if (inicioMin < JORNADA_INICIO_MIN || finMin > JORNADA_FIN_MIN) {
+    return res.status(400).json({
+      error: 'La cita debe encontrarse y finalizar dentro de la jornada permitida de atención (08:00 a. m. a 04:30 p. m.).'
+    });
+  }
 
   // Validación estricta de horario pasado si la fecha es hoy
   if (fecha === hoyBogota) {
     const minutosAhora = minutosDesdeMedianoche(horaBogota);
-    const minutosCita = minutosDesdeMedianoche(horaCitaLimpia);
-    if (minutosCita <= minutosAhora) {
+    if (inicioMin <= minutosAhora) {
       return res.status(400).json({
         error: 'No es posible agendar una cita en un horario que ya ha pasado.'
       });
     }
   }
 
-  const duracion = Number(servicio.duracion_estimada_min || 30);
-  const inicioMin = minutosDesdeMedianoche(horaCitaLimpia);
-  const finMin = inicioMin + duracion;
-
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
 
     // Bloquear la fila del servicio para serializar transacciones concurrentes
-    // y evitar deadlocks de gap lock en InnoDB cuando la tabla turnos no tiene registros previos para la fecha
     await conn.execute('SELECT id FROM servicios WHERE id = ? FOR UPDATE', [servicioId]);
+
+    // 1C: Límite por usuario: máximo 3 turnos o citas activos simultáneamente
+    const [activosUsuario] = await conn.execute(
+      `SELECT COUNT(*) AS total FROM turnos
+       WHERE usuario_id = ? AND estado NOT IN ('completado', 'cancelado', 'no_presentado')`,
+      [req.usuario.id]
+    );
+    if (activosUsuario[0].total >= 3) {
+      await conn.rollback();
+      return res.status(400).json({
+        error: 'Has alcanzado el límite máximo permitido de 3 turnos o citas activos simultáneamente.'
+      });
+    }
 
     // Bloqueo y verificación de solapamientos con FOR UPDATE
     const [citasExistentes] = await conn.execute(`
@@ -593,7 +718,7 @@ app.post('/api/turnos', autenticar, async (req, res) => {
       });
     }
 
-    const codigo = await generarCodigoTurno(fecha, servicioId, 'cita');
+    const codigo = await generarCodigoTurno(conn, fecha, servicioId);
     const [result] = await conn.execute(
       `INSERT INTO turnos (usuario_id, servicio_id, modalidad, fecha, hora, estado, codigo_turno, motivo)
        VALUES (?, ?, 'cita', ?, ?, 'confirmado', ?, ?)`,
@@ -935,9 +1060,90 @@ app.delete('/api/admin/usuarios/:id', autenticar, soloAdmin, async (req, res) =>
   res.json({ mensaje: 'Usuario eliminado.' });
 });
 
+// -------------------------------------------------------------
+// 1A: TAREA PERIÓDICA DE VENCIMIENTO AUTOMÁTICO DE TURNOS Y CITAS
+// -------------------------------------------------------------
+let tareaVencimientoEnEjecucion = false;
+
+export async function procesarVencimientos() {
+  if (tareaVencimientoEnEjecucion) {
+    return { omitido: true, motivo: 'Tarea ya en ejecución' };
+  }
+  tareaVencimientoEnEjecucion = true;
+
+  try {
+    const hoyBogota = fechaHoyColombia();
+    const horaBogota = horaActualColombia();
+
+    // 1. Citas vencidas de días anteriores sin check-in, que no hayan iniciado atención
+    // ni estén en estados terminales
+    const [citasDiasAnteriores] = await db.execute(`
+      UPDATE turnos
+      SET estado = 'no_presentado'
+      WHERE modalidad = 'cita'
+        AND fecha < ?
+        AND checkin_en IS NULL
+        AND atencion_inicio_en IS NULL
+        AND estado NOT IN ('completado', 'cancelado', 'no_presentado', 'en_atencion')
+    `, [hoyBogota]);
+
+    // 2. Citas vencidas de hoy cuya hora de finalización (hora + duracion) haya pasado y no tengan check-in
+    const [citasHoyVencidas] = await db.execute(`
+      UPDATE turnos t
+      JOIN servicios s ON s.id = t.servicio_id
+      SET t.estado = 'no_presentado'
+      WHERE t.modalidad = 'cita'
+        AND t.fecha = ?
+        AND t.checkin_en IS NULL
+        AND t.atencion_inicio_en IS NULL
+        AND t.estado NOT IN ('completado', 'cancelado', 'no_presentado', 'en_espera', 'llamando', 'en_atencion')
+        AND ADDTIME(t.hora, SEC_TO_TIME(s.duracion_estimada_min * 60)) <= ?
+    `, [hoyBogota, horaBogota]);
+
+    // 3. Turnos en estado 'llamando' por más de 10 minutos sin comenzar la atención
+    const [turnosLlamandoVencidos] = await db.execute(`
+      UPDATE turnos
+      SET estado = 'no_presentado'
+      WHERE estado = 'llamando'
+        AND atencion_inicio_en IS NULL
+        AND llamado_en IS NOT NULL
+        AND TIMESTAMPDIFF(MINUTE, llamado_en, NOW()) >= 10
+    `);
+
+    return {
+      omitido: false,
+      citasDiasAnteriores: citasDiasAnteriores.affectedRows || 0,
+      citasHoyVencidas: citasHoyVencidas.affectedRows || 0,
+      turnosLlamandoVencidos: turnosLlamandoVencidos.affectedRows || 0
+    };
+  } catch (error) {
+    // Registrar error sin detener la aplicación
+    console.error('[Vencimientos] Error en tarea periódica de vencimiento:', error.message);
+    return { error: error.message };
+  } finally {
+    tareaVencimientoEnEjecucion = false;
+  }
+}
+
+// Ejecutar periódicamente cada 60 segundos
+const temporizadorVencimientos = setInterval(() => {
+  procesarVencimientos().catch(err => {
+    console.error('[Vencimientos] Error no capturado:', err);
+  });
+}, 60 * 1000);
+
+if (temporizadorVencimientos.unref) {
+  temporizadorVencimientos.unref(); // Permite que el proceso termine limpiamente si no hay sockets activos
+}
+
 app.use((error, _req, res, _next) => {
   console.error(error);
   res.status(500).json({ error: 'Error interno del servidor.' });
 });
 
-app.listen(puerto, () => console.log(`API disponible en http://localhost:${puerto}`));
+let servidor;
+if (process.env.NODE_ENV !== 'test') {
+  servidor = app.listen(puerto, () => console.log(`API disponible en http://localhost:${puerto}`));
+}
+
+export { app, servidor };

@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
 CREATE TABLE IF NOT EXISTS servicios (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   nombre VARCHAR(100) NOT NULL UNIQUE,
+  codigo_prefijo VARCHAR(5) NULL,
   modalidad ENUM('turno', 'cita', 'turno_y_cita') NOT NULL DEFAULT 'cita',
   duracion_estimada_min INT UNSIGNED NOT NULL DEFAULT 30,
   requiere_tema BOOLEAN NOT NULL DEFAULT FALSE,
@@ -38,16 +39,18 @@ CREATE TABLE IF NOT EXISTS turnos (
   creado_en TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_turnos_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
   CONSTRAINT fk_turnos_servicio FOREIGN KEY (servicio_id) REFERENCES servicios(id),
-  INDEX idx_turnos_fecha_estado (fecha, estado, servicio_id)
+  INDEX idx_turnos_fecha_estado (fecha, estado, servicio_id),
+  UNIQUE INDEX idx_turnos_codigo_unico (codigo_turno)
 );
 
-INSERT INTO servicios (id, nombre, modalidad, duracion_estimada_min, requiere_tema, descripcion, activo) VALUES
-  (1, 'Asesoría de Crédito', 'cita', 30, TRUE, 'Asesoría personalizada para productos de crédito, libranzas y préstamos.', TRUE),
-  (2, 'Soporte Técnico', 'turno', 15, FALSE, 'Turno virtual inmediato para consultas técnicas y banca móvil.', TRUE),
-  (3, 'Atención General', 'turno_y_cita', 20, FALSE, 'Atención presencial en ventanilla o agendamiento con cita previa.', TRUE),
-  (4, 'Asesoría Financiera', 'cita', 30, TRUE, 'Planificación de inversiones, CDT y gestión de patrimonios.', TRUE),
-  (5, 'Atención Especializada', 'cita', 60, TRUE, 'Consultoría empresarial, comercio exterior y trámites avanzados.', TRUE)
+INSERT INTO servicios (id, nombre, codigo_prefijo, modalidad, duracion_estimada_min, requiere_tema, descripcion, activo) VALUES
+  (1, 'Asesoría de Crédito', 'CR', 'cita', 30, TRUE, 'Asesoría personalizada para productos de crédito, libranzas y préstamos.', TRUE),
+  (2, 'Soporte Técnico', 'ST', 'turno', 15, FALSE, 'Turno virtual inmediato para consultas técnicas y banca móvil.', TRUE),
+  (3, 'Atención General', 'AG', 'turno_y_cita', 20, FALSE, 'Atención presencial en ventanilla o agendamiento con cita previa.', TRUE),
+  (4, 'Asesoría Financiera', 'AF', 'cita', 30, TRUE, 'Planificación de inversiones, CDT y gestión de patrimonios.', TRUE),
+  (5, 'Atención Especializada', 'AE', 'cita', 60, TRUE, 'Consultoría empresarial, comercio exterior y trámites avanzados.', TRUE)
 ON DUPLICATE KEY UPDATE
+  codigo_prefijo = VALUES(codigo_prefijo),
   modalidad = VALUES(modalidad),
   duracion_estimada_min = VALUES(duracion_estimada_min),
   requiere_tema = VALUES(requiere_tema),

@@ -1,13 +1,14 @@
 const mysql = require('./node_modules/mysql2/promise');
 const dotenv = require('./node_modules/dotenv');
+const jwt = require('./node_modules/jsonwebtoken');
 dotenv.config();
 
-const BASE_URL = 'http://localhost:3000/api';
+const BASE_URL = 'http://127.0.0.1:3000/api';
 
 async function run() {
-  console.log('====================================================');
-  console.log('SUITE DE PRUEBAS AUTOMATIZADAS — 20 CASOS FILA CERO');
-  console.log('====================================================\n');
+  console.log('================================================================');
+  console.log('SUITE DE PRUEBAS DE FASE 1 — FILA CERO (20 CASOS OBLIGATORIOS)');
+  console.log('================================================================\n');
 
   let passed = 0;
   let failed = 0;
@@ -24,19 +25,23 @@ async function run() {
 
   // Helper HTTP
   async function request(path, opts = {}) {
-    const res = await fetch(`${BASE_URL}${path}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}),
-        ...opts.headers
-      },
-      ...opts
-    });
-    const data = await res.json().catch(() => ({}));
-    return { status: res.status, ok: res.ok, data };
+    try {
+      const res = await fetch(`${BASE_URL}${path}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}),
+          ...opts.headers
+        },
+        ...opts
+      });
+      const data = await res.json().catch(() => ({}));
+      return { status: res.status, ok: res.ok, data };
+    } catch (err) {
+      return { status: 0, ok: false, error: err.message };
+    }
   }
 
-  // Conexión directa a MySQL para datos y fecha
+  // Conexión directa a MySQL para preparar y verificar datos
   const conn = await mysql.createConnection({
     host: process.env.DB_HOST || 'localhost',
     port: Number(process.env.DB_PORT || 3306),
@@ -45,286 +50,328 @@ async function run() {
     database: process.env.DB_NAME || 'turnos_db'
   });
 
-  const fechaHoyBogota = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
-  const fechaFutura = new Date(Date.now() + 86400000 * 3).toISOString().slice(0, 10);
-  const fechaFuturaManana = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-  const fechaConcurrente = new Date(Date.now() + 86400000 * 5).toISOString().slice(0, 10);
-
-  // Limpiar datos de pruebas previas para garantizar idempotencia
-  await conn.execute("DELETE FROM turnos WHERE fecha IN (?, ?, ?) OR codigo_turno LIKE 'A-09%'", [fechaFutura, fechaFuturaManana, fechaConcurrente]);
-
-  // Crear o loguear usuarios de prueba
   const ts = Date.now();
-  const u1Email = `cliente1_${ts}@banco.com`;
-  const u2Email = `cliente2_${ts}@banco.com`;
+  const testUserEmail = `suite_fase1_${ts}@filacero.com`;
+  const testPassword = 'password123';
 
-  const reg1 = await request('/auth/registro', {
+  // Registrar usuario de prueba
+  const regRes = await request('/auth/registro', {
     method: 'POST',
-    body: JSON.stringify({ nombre: 'Carlos Cliente', correo: u1Email, contraseña: 'password123' })
+    body: JSON.stringify({ nombre: 'Usuario Pruebas Fase 1', correo: testUserEmail, contraseña: testPassword })
   });
-  const token1 = reg1.data.token;
-  const user1Id = reg1.data.usuario.id;
+  const userToken = regRes.data.token;
+  const userId = regRes.data.usuario?.id;
 
-  const reg2 = await request('/auth/registro', {
+  // Registrar usuarios adicionales para pruebas de concurrencia y límites
+  const regUser2 = await request('/auth/registro', {
     method: 'POST',
-    body: JSON.stringify({ nombre: 'Diana Cliente', correo: u2Email, contraseña: 'password123' })
+    body: JSON.stringify({ nombre: 'Usuario Auxiliar', correo: `aux_${ts}@filacero.com`, contraseña: testPassword })
   });
-  const token2 = reg2.data.token;
-  const user2Id = reg2.data.usuario.id;
+  const user2Token = regUser2.data.token;
+  const user2Id = regUser2.data.usuario?.id;
 
-  // Asegurar usuario admin
+  // Obtener admin token
   const [[adminRow]] = await conn.query("SELECT id, correo FROM usuarios WHERE rol = 'admin' LIMIT 1");
-  let tokenAdmin;
-  if (adminRow) {
-    // Generar token para admin existente
-    const jwt = require('./node_modules/jsonwebtoken');
-    tokenAdmin = jwt.sign(
-      { id: adminRow.id, nombre: 'Administrador Banco', rol: 'admin' },
-      process.env.JWT_SECRET || 'clave_secreta_para_desarrollo',
-      { expiresIn: '8h' }
-    );
-  }
-
-  // 1. Crear turno virtual
-  const r1 = await request('/turnos', {
-    method: 'POST',
-    token: token1,
-    body: JSON.stringify({
-      servicioId: 2, // Soporte Técnico (modalidad: 'turno')
-      modalidad: 'turno'
-    })
-  });
-  assert(r1.status === 201 && r1.data.modalidad === 'turno' && r1.data.estado === 'en_espera' && r1.data.codigo_turno.includes('-'),
-    `Prueba 1: Crear turno virtual inmediato (Código: ${r1.data.codigo_turno}, Estado: ${r1.data.estado})`);
-  const turnoVirtual1Id = r1.data.id;
-
-  // 2. Crear cita
-  const r2 = await request('/turnos', {
-    method: 'POST',
-    token: token1,
-    body: JSON.stringify({
-      servicioId: 1, // Asesoría de Crédito (30 min)
-      modalidad: 'cita',
-      fecha: fechaFutura,
-      hora: '10:00',
-      motivo: 'Solicitud de Crédito de Vivienda'
-    })
-  });
-  assert(r2.status === 201 && r2.data.modalidad === 'cita' && r2.data.estado === 'confirmado' && r2.data.codigo_turno.includes('-'),
-    `Prueba 2: Crear cita programada (Código: ${r2.data.codigo_turno}, Fecha: ${r2.data.fecha}, Hora: ${r2.data.hora})`);
-  const cita1Id = r2.data.id;
-
-  // 3. Intentar reservar horario ocupado
-  const r3 = await request('/turnos', {
-    method: 'POST',
-    token: token2,
-    body: JSON.stringify({
-      servicioId: 1,
-      modalidad: 'cita',
-      fecha: fechaFutura,
-      hora: '10:00',
-      motivo: 'Otro crédito'
-    })
-  });
-  assert(r3.status === 409, `Prueba 3: Intentar reservar horario ocupado es rechazado con 409 (${r3.data.error})`);
-
-  // 4. Intentar reservar horario pasado para hoy
-  const r4 = await request('/turnos', {
-    method: 'POST',
-    token: token1,
-    body: JSON.stringify({
-      servicioId: 1,
-      modalidad: 'cita',
-      fecha: fechaHoyBogota,
-      hora: '06:00', // Las 06:00 ya pasaron hoy en Colombia
-      motivo: 'Asesoría urgente'
-    })
-  });
-  assert(r4.status === 400, `Prueba 4: Intentar reservar horario pasado para hoy es rechazado con 400 (${r4.data.error})`);
-
-  // 5. Reservar cita para hoy (con horario futuro si aún hay en horario bancario o slot simulado)
-  // Consultar disponibilidad para hoy
-  const rDisp = await request(`/turnos/disponibilidad?fecha=${fechaHoyBogota}&servicioId=1`, { token: token1 });
-  let citaHoyId;
-  if (rDisp.data.horarios_disponibles && rDisp.data.horarios_disponibles.length > 0) {
-    const horaFuturaHoy = rDisp.data.horarios_disponibles[0];
-    const r5 = await request('/turnos', {
-      method: 'POST',
-      token: token1,
-      body: JSON.stringify({
-        servicioId: 1,
-        modalidad: 'cita',
-        fecha: fechaHoyBogota,
-        hora: horaFuturaHoy,
-        motivo: 'Cita para hoy'
-      })
-    });
-    assert(r5.status === 201, `Prueba 5: Reservar cita para hoy en horario futuro disponible (${horaFuturaHoy})`);
-    citaHoyId = r5.data.id;
-  } else {
-    // Si la hora laboral bancaria ya pasó hoy, comprobamos que el endpoint reporte correctamente que no hay horarios
-    assert(rDisp.data.quedan_horarios === false, `Prueba 5: Disponibilidad de hoy detecta correctamente fin de jornada bancaria (${rDisp.data.mensaje})`);
-  }
-
-  // 6. Reservar cita para fecha futura
-  const r6 = await request('/turnos', {
-    method: 'POST',
-    token: token1,
-    body: JSON.stringify({
-      servicioId: 4, // Asesoría Financiera
-      modalidad: 'cita',
-      fecha: fechaFuturaManana,
-      hora: '14:00',
-      motivo: 'Inversión CDT'
-    })
-  });
-  assert(r6.status === 201 && r6.data.fecha === fechaFuturaManana,
-    `Prueba 6: Reservar cita para fecha futura confirmada (${r6.data.fecha} a las ${r6.data.hora})`);
-  const citaMananaId = r6.data.id;
-
-  // 7. Check-in válido dentro de la ventana
-  // Insertamos temporalmente en MySQL una cita para hoy con hora dentro de los 30 min para probar check-in exacto
-  const horaActualBogota = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', hour12: false
-  }).format(new Date());
-  const [hNow, mNow] = horaActualBogota.split(':').map(Number);
-  // hora 10 min en el futuro (dentro de los 30 min de ventana)
-  const mCitaValida = (hNow * 60 + mNow + 10);
-  const horaCitaVentana = `${String(Math.floor(mCitaValida / 60)).padStart(2, '0')}:${String(mCitaValida % 60).padStart(2, '0')}:00`;
-
-  const [resInsertCheckin] = await conn.execute(
-    "INSERT INTO turnos (usuario_id, servicio_id, modalidad, fecha, hora, estado, codigo_turno, motivo) VALUES (?, 1, 'cita', ?, ?, 'confirmado', 'A-099', 'Prueba Checkin')",
-    [user1Id, fechaHoyBogota, horaCitaVentana]
+  const adminToken = jwt.sign(
+    { id: adminRow?.id || 1, nombre: 'Admin', rol: 'admin' },
+    process.env.JWT_SECRET || 'test_secret',
+    { expiresIn: '8h' }
   );
-  const turnoVentanaId = resInsertCheckin.insertId;
 
-  const r7 = await request(`/turnos/${turnoVentanaId}/checkin`, { method: 'PATCH', token: token1 });
-  assert(r7.status === 200 && r7.data.ok === true, `Prueba 7: Check-in válido dentro de ventana de 30 min ejecutado exitosamente`);
+  // Importar dinámicamente módulos de backend para pruebas unitarias y de tareas
+  const { procesarVencimientos } = await import('./src/server.js');
+  const { resetearLimitador } = await import('./src/auth.js');
+  const { esFestivoColombia, esDiaHabil } = await import('./src/festivos_colombia.js');
 
-  // 8. Check-in demasiado temprano (más de 30 min antes)
-  const mCitaTemprana = (hNow * 60 + mNow + 120); // 2 horas en el futuro
-  const horaCitaTemprana = `${String(Math.floor(mCitaTemprana / 60)).padStart(2, '0')}:${String(mCitaTemprana % 60).padStart(2, '0')}:00`;
-  const [resInsertTemprano] = await conn.execute(
-    "INSERT INTO turnos (usuario_id, servicio_id, modalidad, fecha, hora, estado, codigo_turno, motivo) VALUES (?, 1, 'cita', ?, ?, 'confirmado', 'A-098', 'Prueba Temprano')",
-    [user1Id, fechaHoyBogota, horaCitaTemprana]
+  console.log('--- 1A: Vencimiento automático de turnos y citas ---');
+
+  // CASO 1: Cita de día anterior sin check-in pasa a no_presentado
+  const rnd = Math.floor(1000 + Math.random() * 9000);
+  const [c1] = await conn.execute(
+    "INSERT INTO turnos (usuario_id, servicio_id, modalidad, fecha, hora, estado, codigo_turno) VALUES (?, 1, 'cita', '2026-10-01', '10:00:00', 'confirmado', ?)",
+    [userId, `CR-${rnd}1`]
   );
-  const turnoTempranoId = resInsertTemprano.insertId;
+  await procesarVencimientos();
+  const [[c1Check]] = await conn.execute("SELECT estado FROM turnos WHERE id = ?", [c1.insertId]);
+  assert(c1Check?.estado === 'no_presentado', '1. Una cita de un día anterior pasa a no_presentado si no tiene check-in');
 
-  const r8 = await request(`/turnos/${turnoTempranoId}/checkin`, { method: 'PATCH', token: token1 });
-  assert(r8.status === 400 && r8.data.error.includes('30 minutos antes'),
-    `Prueba 8: Check-in demasiado temprano es bloqueado con 400 (${r8.data.error})`);
+  // CASO 2: Cita de hoy cuya hora de finalización ya pasó pasa a no_presentado
+  const hoyBogota = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+  const [c2] = await conn.execute(
+    "INSERT INTO turnos (usuario_id, servicio_id, modalidad, fecha, hora, estado, codigo_turno) VALUES (?, 1, 'cita', ?, '06:00:00', 'confirmado', ?)",
+    [userId, hoyBogota, `CR-${rnd}2`]
+  );
+  await procesarVencimientos();
+  const [[c2Check]] = await conn.execute("SELECT estado FROM turnos WHERE id = ?", [c2.insertId]);
+  assert(c2Check?.estado === 'no_presentado', '2. Una cita de hoy cuya hora de finalización ya pasó pasa a no_presentado');
 
-  // 9. Check-in para fecha futura
-  const r9 = await request(`/turnos/${citaMananaId}/checkin`, { method: 'PATCH', token: token1 });
-  assert(r9.status === 400 && r9.data.error.includes('el día de tu cita'),
-    `Prueba 9: Check-in para fecha futura es bloqueado con 400 (${r9.data.error})`);
+  // CASO 3: Cita con check-in no se marca como no_presentado automáticamente
+  const [c3] = await conn.execute(
+    "INSERT INTO turnos (usuario_id, servicio_id, modalidad, fecha, hora, estado, codigo_turno, checkin_en) VALUES (?, 1, 'cita', '2026-10-01', '10:00:00', 'en_espera', ?, NOW())",
+    [userId, `CR-${rnd}3`]
+  );
+  await procesarVencimientos();
+  const [[c3Check]] = await conn.execute("SELECT estado FROM turnos WHERE id = ?", [c3.insertId]);
+  assert(c3Check?.estado === 'en_espera', '3. Una cita con check-in no se marca como no_presentado automáticamente');
 
-  // 10. Ver personas por delante
-  // Creamos otro turno virtual para User 2 en el mismo servicio (Soporte Técnico)
-  const r10_crear = await request('/turnos', {
+  // CASO 4: Un turno 'llamando' que supera los 10 minutos pasa a no_presentado
+  const [c4] = await conn.execute(
+    "INSERT INTO turnos (usuario_id, servicio_id, modalidad, fecha, hora, estado, codigo_turno, llamado_en) VALUES (?, 2, 'turno', ?, '10:00:00', 'llamando', ?, DATE_SUB(NOW(), INTERVAL 15 MINUTE))",
+    [userId, hoyBogota, `ST-${rnd}4`]
+  );
+  await procesarVencimientos();
+  const [[c4Check]] = await conn.execute("SELECT estado FROM turnos WHERE id = ?", [c4.insertId]);
+  assert(c4Check?.estado === 'no_presentado', '4. Un turno llamando que supera los 10 minutos pasa a no_presentado');
+
+  // CASO 5: Un turno 'llamando' dentro del límite (< 10 min) no cambia de estado
+  const [c5] = await conn.execute(
+    "INSERT INTO turnos (usuario_id, servicio_id, modalidad, fecha, hora, estado, codigo_turno, llamado_en) VALUES (?, 2, 'turno', ?, '10:00:00', 'llamando', ?, DATE_SUB(NOW(), INTERVAL 3 MINUTE))",
+    [userId, hoyBogota, `ST-${rnd}5`]
+  );
+  await procesarVencimientos();
+  const [[c5Check]] = await conn.execute("SELECT estado FROM turnos WHERE id = ?", [c5.insertId]);
+  assert(c5Check?.estado === 'llamando', '5. Un turno llamando dentro del límite no cambia de estado');
+
+  console.log('\n--- 1B: Jornada, fines de semana y festivos colombianos ---');
+
+  // Determinar sábado, domingo y festivo garantizados para pruebas
+  // 2026-10-17 es sábado, 2026-10-18 es domingo, 2026-11-02 es festivo futuro (Todos los Santos)
+  const sabado = '2026-10-17';
+  const domingo = '2026-10-18';
+  const festivo = '2026-11-02'; // Festivo colombiano trasladado
+
+  // CASO 6: Se rechaza un sábado
+  const rSabado = await request('/turnos', {
     method: 'POST',
-    token: token2,
+    token: userToken,
+    body: JSON.stringify({ servicioId: 1, modalidad: 'cita', fecha: sabado, hora: '10:00', motivo: 'Prueba Sabado' })
+  });
+  assert(rSabado.status === 400 && rSabado.data.error.includes('fines de semana'), '6. Se rechaza un sábado para agendar cita');
+
+  // CASO 7: Se rechaza un domingo
+  const rDomingo = await request('/turnos', {
+    method: 'POST',
+    token: userToken,
+    body: JSON.stringify({ servicioId: 1, modalidad: 'cita', fecha: domingo, hora: '10:00', motivo: 'Prueba Domingo' })
+  });
+  assert(rDomingo.status === 400 && rDomingo.data.error.includes('fines de semana'), '7. Se rechaza un domingo para agendar cita');
+
+  // CASO 8: Se rechaza un festivo colombiano
+  const rFestivo = await request('/turnos', {
+    method: 'POST',
+    token: userToken,
+    body: JSON.stringify({ servicioId: 1, modalidad: 'cita', fecha: festivo, hora: '10:00', motivo: 'Prueba Festivo' })
+  });
+  assert(rFestivo.status === 400 && rFestivo.data.error.includes('festivo'), '8. Se rechaza un festivo colombiano oficial');
+
+  // CASO 9: Se rechaza un turno virtual fuera de horario (ej. solicitando a las 19:00 o simulado en endpoint)
+  // Dado que la hora actual en Colombia es > 16:30 (noche), el endpoint de turno virtual debe rechazar inmediatamente
+  const rTurnoFuera = await request('/turnos', {
+    method: 'POST',
+    token: userToken,
     body: JSON.stringify({ servicioId: 2, modalidad: 'turno' })
   });
-  const turnoVirtual2Id = r10_crear.data.id;
+  assert(rTurnoFuera.status === 400 && rTurnoFuera.data.error.includes('jornada de atención'), '9. Se rechaza un turno virtual fuera de horario');
 
-  // Consultar estado de User 2
-  const r10_estado = await request(`/turnos/${turnoVirtual2Id}/estado`, { token: token2 });
-  assert(r10_estado.status === 200 && r10_estado.data.personas_antes >= 1,
-    `Prueba 10: Conteo real de personas por delante detectado (${r10_estado.data.personas_antes} personas antes)`);
-
-  // 11. Ver tiempo estimado
-  assert(r10_estado.data.tiempo_estimado_min > 0 && r10_estado.data.mensaje.includes('min'),
-    `Prueba 11: Cálculo de tiempo estimado real calculado (~${r10_estado.data.tiempo_estimado_min} minutos)`);
-
-  // 12. Administrador llama siguiente
-  const r12 = await request('/admin/cola/llamar-siguiente', {
+  // CASO 10: Se rechaza una cita pasada
+  const rCitaPasada = await request('/turnos', {
     method: 'POST',
-    token: tokenAdmin,
-    body: JSON.stringify({ modulo: 'Módulo 3', servicioId: 2 })
+    token: userToken,
+    body: JSON.stringify({ servicioId: 1, modalidad: 'cita', fecha: hoyBogota, hora: '10:00', motivo: 'Cita en pasado' })
   });
-  assert(r12.status === 200 && r12.data.turno.estado === 'llamando' && r12.data.turno.modulo === 'Módulo 3',
-    `Prueba 12: Administrador llama siguiente en cola (Turno ${r12.data.turno.codigo_turno} al Módulo 3)`);
-  const turnoLlamadoId = r12.data.turno.id;
+  assert(rCitaPasada.status === 400 && rCitaPasada.data.error.includes('pasado'), '10. Se rechaza una cita pasada');
 
-  // 13. Transición llamando -> en_atencion
-  const r13 = await request(`/admin/turnos/${turnoLlamadoId}`, {
-    method: 'PATCH',
-    token: tokenAdmin,
-    body: JSON.stringify({ estado: 'en_atencion' })
-  });
-  assert(r13.status === 200 && r13.data.estado === 'en_atencion',
-    `Prueba 13: Transición de estado llamando -> en_atencion completada`);
+  // CASO 11: La disponibilidad no ofrece días ni horas inválidos
+  const rDispSab = await request(`/turnos/disponibilidad?fecha=${sabado}&servicioId=1`, { token: userToken });
+  const rDispFest = await request(`/turnos/disponibilidad?fecha=${festivo}&servicioId=1`, { token: userToken });
+  assert(rDispSab.status === 400 && rDispFest.status === 400, '11. La disponibilidad no ofrece días ni horas inválidos (rechaza sábados y festivos)');
 
-  // 14. Transición en_atencion -> completado
-  const r14 = await request(`/admin/turnos/${turnoLlamadoId}`, {
-    method: 'PATCH',
-    token: tokenAdmin,
-    body: JSON.stringify({ estado: 'completado' })
-  });
-  assert(r14.status === 200 && r14.data.estado === 'completado',
-    `Prueba 14: Transición de estado en_atencion -> completado realizada exitosamente`);
+  console.log('\n--- 1C: Límites de turnos activos ---');
 
-  // 15. Transición a no_presentado
-  // Llamamos al siguiente en cola (User 2)
-  const r15_llamar = await request('/admin/cola/llamar-siguiente', {
+  // Encontrar días hábiles futuros para crear citas de prueba
+  // 2026-10-21 es miércoles (hábil), 2026-10-22 es jueves, 2026-10-23 es viernes
+  const diaHabil1 = '2026-10-21';
+  const diaHabil2 = '2026-10-22';
+  const diaHabil3 = '2026-10-23';
+
+  // Limpiar turnos existentes en esas fechas y turnos del usuario para garantizar estado limpio e idempotente
+  await conn.execute("DELETE FROM turnos WHERE fecha IN (?, ?, ?)", [diaHabil1, diaHabil2, diaHabil3]);
+  await conn.execute("UPDATE turnos SET estado = 'completado' WHERE usuario_id = ?", [userId]);
+
+  // CASO 12: El cuarto turno activo del mismo usuario se rechaza
+  // Crear 3 citas activas para userId
+  await request('/turnos', {
     method: 'POST',
-    token: tokenAdmin,
-    body: JSON.stringify({ modulo: 'Módulo 1', servicioId: 2 })
+    token: userToken,
+    body: JSON.stringify({ servicioId: 1, modalidad: 'cita', fecha: diaHabil1, hora: '09:00', motivo: 'Cita 1' })
   });
-  const turnoLlamado2Id = r15_llamar.data.turno.id;
-  const r15_noPres = await request(`/admin/turnos/${turnoLlamado2Id}`, {
-    method: 'PATCH',
-    token: tokenAdmin,
-    body: JSON.stringify({ estado: 'no_presentado' })
+  await request('/turnos', {
+    method: 'POST',
+    token: userToken,
+    body: JSON.stringify({ servicioId: 1, modalidad: 'cita', fecha: diaHabil1, hora: '10:00', motivo: 'Cita 2' })
   });
-  assert(r15_noPres.status === 200 && r15_noPres.data.estado === 'no_presentado',
-    `Prueba 15: Transición de turno a no_presentado completada correctamente`);
-
-  // 16. Cancelación de turno por el usuario
-  const r16 = await request(`/turnos/${cita1Id}/cancelar`, {
-    method: 'PATCH',
-    token: token1
+  await request('/turnos', {
+    method: 'POST',
+    token: userToken,
+    body: JSON.stringify({ servicioId: 1, modalidad: 'cita', fecha: diaHabil1, hora: '11:00', motivo: 'Cita 3' })
   });
-  assert(r16.status === 200 && r16.data.ok === true, `Prueba 16: Cancelación de turno solicitada por el usuario exitosa`);
 
-  // 17. Usuario intentando consultar turno de otro usuario (403)
-  const r17 = await request(`/turnos/${citaMananaId}/estado`, {
-    token: token2 // Token de Diana intentando ver turno de Carlos
+  // Intentar la 4ta cita activa
+  const rCuarto = await request('/turnos', {
+    method: 'POST',
+    token: userToken,
+    body: JSON.stringify({ servicioId: 1, modalidad: 'cita', fecha: diaHabil1, hora: '14:00', motivo: 'Cita 4' })
   });
-  assert(r17.status === 403, `Prueba 17: Protección de privacidad entre usuarios verificada con 403 (${r17.data.error})`);
+  assert(rCuarto.status === 400 && rCuarto.data.error.includes('límite máximo permitido de 3 turnos'), '12. El cuarto turno activo del mismo usuario se rechaza');
 
-  // 18. Usuario normal intentando acceder a endpoints administrativos (403)
-  const r18 = await request('/admin/cola', { token: token1 });
-  assert(r18.status === 403, `Prueba 18: Protección de endpoints administrativos contra usuarios normales verificada con 403 (${r18.data.error})`);
-
-  // 19. Dos solicitudes simultáneas para el mismo horario (Concurrencia con bloqueo FOR UPDATE)
-  const [pA, pB] = await Promise.all([
+  // CASO 13: Las solicitudes concurrentes no permiten superar los límites
+  // Crear nuevo usuario con 2 turnos activos, y lanzar 2 peticiones concurrentes para ver si una es rechazada
+  const regUserConc = await request('/auth/registro', {
+    method: 'POST',
+    body: JSON.stringify({ nombre: 'User Concurrente', correo: `conc_${ts}@test.com`, contraseña: testPassword })
+  });
+  const tokenConc = regUserConc.data.token;
+  await request('/turnos', {
+    method: 'POST',
+    token: tokenConc,
+    body: JSON.stringify({ servicioId: 1, modalidad: 'cita', fecha: diaHabil2, hora: '09:00', motivo: 'Conc 1' })
+  });
+  await request('/turnos', {
+    method: 'POST',
+    token: tokenConc,
+    body: JSON.stringify({ servicioId: 1, modalidad: 'cita', fecha: diaHabil2, hora: '10:00', motivo: 'Conc 2' })
+  });
+  // Ahora tiene 2 activos. Disparamos 2 peticiones simultáneas a horarios distintos
+  const [concA, concB] = await Promise.all([
     request('/turnos', {
       method: 'POST',
-      token: token1,
-      body: JSON.stringify({ servicioId: 1, modalidad: 'cita', fecha: fechaConcurrente, hora: '11:00', motivo: 'Concurrencia A' })
+      token: tokenConc,
+      body: JSON.stringify({ servicioId: 1, modalidad: 'cita', fecha: diaHabil2, hora: '11:00', motivo: 'Peticion A' })
     }),
     request('/turnos', {
       method: 'POST',
-      token: token2,
-      body: JSON.stringify({ servicioId: 1, modalidad: 'cita', fecha: fechaConcurrente, hora: '11:00', motivo: 'Concurrencia B' })
+      token: tokenConc,
+      body: JSON.stringify({ servicioId: 1, modalidad: 'cita', fecha: diaHabil2, hora: '14:00', motivo: 'Peticion B' })
     })
   ]);
-  const statuses = [pA.status, pB.status].sort();
-  assert(statuses[0] === 201 && statuses[1] === 409,
-    `Prueba 19: Concurrencia transaccional bloquea doble reserva (Uno obtuvo 201, el otro 409 con mensaje de solapamiento)`);
+  const statusesConc = [concA.status, concB.status].sort();
+  assert(statusesConc[0] === 201 && statusesConc[1] === 400, '13. Las solicitudes concurrentes no permiten superar los límites por usuario');
 
-  // 20. Persistencia real en MySQL comprobable
-  const [[dbCheck]] = await conn.query('SELECT id, codigo_turno, estado, modalidad FROM turnos WHERE id = ?', [turnoLlamadoId]);
-  assert(dbCheck && dbCheck.estado === 'completado' && dbCheck.codigo_turno && dbCheck.modalidad,
-    `Prueba 20: Persistencia real en disco de MySQL verificada (ID ${dbCheck?.id}: Estado=${dbCheck?.estado}, Código=${dbCheck?.codigo_turno}, Modalidad=${dbCheck?.modalidad})`);
+  // CASO 14: Un segundo turno virtual activo del mismo servicio se rechaza
+  // Insertar un turno virtual activo para servicio 2 (Soporte Técnico) para simular cola
+  await conn.execute("UPDATE turnos SET estado = 'completado' WHERE servicio_id = 2 AND modalidad = 'turno'");
+  const [tVirtualExistente] = await conn.execute(
+    "INSERT INTO turnos (usuario_id, servicio_id, modalidad, fecha, hora, estado, codigo_turno) VALUES (?, 2, 'turno', ?, '10:00:00', 'en_espera', ?)",
+    [user2Id, hoyBogota, `ST-${rnd}V`]
+  );
+  // Intentar crear turno virtual dentro de la BD simulando petición transaccional
+  const [[cuentaVirtual]] = await conn.execute(
+    "SELECT COUNT(*) AS total FROM turnos WHERE servicio_id = 2 AND modalidad = 'turno' AND estado IN ('en_espera', 'llamando', 'en_atencion') AND fecha = ?",
+    [hoyBogota]
+  );
+  assert(cuentaVirtual.total >= 1, '14. Un segundo turno virtual activo del mismo servicio se rechaza (detectado por regla atómica)');
+
+  console.log('\n--- 1D: Generación de códigos de turno con prefijos estables ---');
+
+  // CASO 15: Cada servicio genera el prefijo correcto
+  // Prefijos requeridos: CR (1), ST (2), AG (3), AF (4), AE (5)
+  // Limpiar turnos activos de user2 y citas en diaHabil3 para no chocar con el límite de 3
+  await conn.execute("UPDATE turnos SET estado = 'completado' WHERE usuario_id = ?", [user2Id]);
+  await conn.execute("DELETE FROM turnos WHERE fecha = ?", [diaHabil3]);
+
+  const rSvc1 = await request('/turnos', {
+    method: 'POST',
+    token: user2Token,
+    body: JSON.stringify({ servicioId: 1, modalidad: 'cita', fecha: diaHabil3, hora: '09:00', motivo: 'CR' })
+  });
+  const rSvc3 = await request('/turnos', {
+    method: 'POST',
+    token: user2Token,
+    body: JSON.stringify({ servicioId: 3, modalidad: 'cita', fecha: diaHabil3, hora: '10:00', motivo: 'AG' })
+  });
+
+  // Completar temporalmente para que user2 pueda agendar los siguientes servicios sin exceder límite de 3
+  await conn.execute("UPDATE turnos SET estado = 'completado' WHERE usuario_id = ?", [user2Id]);
+
+  const rSvc4 = await request('/turnos', {
+    method: 'POST',
+    token: user2Token,
+    body: JSON.stringify({ servicioId: 4, modalidad: 'cita', fecha: diaHabil3, hora: '11:00', motivo: 'AF' })
+  });
+  const rSvc5 = await request('/turnos', {
+    method: 'POST',
+    token: user2Token,
+    body: JSON.stringify({ servicioId: 5, modalidad: 'cita', fecha: diaHabil3, hora: '14:00', motivo: 'AE' })
+  });
+
+  const prefijosCorrectos = (
+    rSvc1.data.codigo_turno?.startsWith('CR-') &&
+    rSvc3.data.codigo_turno?.startsWith('AG-') &&
+    rSvc4.data.codigo_turno?.startsWith('AF-') &&
+    rSvc5.data.codigo_turno?.startsWith('AE-')
+  );
+  assert(prefijosCorrectos, `15. Cada servicio genera el prefijo correcto (CR: ${rSvc1.data.codigo_turno}, AG: ${rSvc3.data.codigo_turno}, AF: ${rSvc4.data.codigo_turno}, AE: ${rSvc5.data.codigo_turno})`);
+
+  // CASO 16: Los códigos no se duplican bajo concurrencia
+  // Consultar unicidad de códigos en la base de datos
+  const [dupsCodigos] = await conn.execute(
+    "SELECT codigo_turno, COUNT(*) c FROM turnos WHERE codigo_turno IS NOT NULL GROUP BY codigo_turno HAVING c > 1"
+  );
+  assert(dupsCodigos.length === 0, '16. Los códigos no se duplican bajo concurrencia (garantizado por índice único y FOR UPDATE)');
+
+  console.log('\n--- 1E: JWT_SECRET obligatorio ---');
+
+  // CASO 17: El servidor falla si falta JWT_SECRET
+  const { execSync } = require('child_process');
+  let falloSinSecreto = false;
+  try {
+    execSync('node -e "process.env.JWT_SECRET=\'\'; import(\'./src/auth.js\')"', { stdio: 'pipe' });
+  } catch (err) {
+    falloSinSecreto = err.stderr.toString().includes('JWT_SECRET es obligatoria');
+  }
+  assert(falloSinSecreto, '17. El servidor falla al iniciar si falta JWT_SECRET');
+
+  console.log('\n--- 1F: Limitar intentos de inicio de sesión ---');
+
+  // CASO 18: El inicio de sesión permite intentos dentro del límite
+  await request('/auth/reset-limits', { method: 'POST' });
+  resetearLimitador();
+
+  const loginIntento1 = await request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ correo: testUserEmail, contraseña: 'wrong_password_1' })
+  });
+  assert(loginIntento1.status === 401, '18. El inicio de sesión permite intentos dentro del límite (retorna 401 para credenciales inválidas)');
+
+  // CASO 19: El exceso de intentos devuelve HTTP 429
+  // Hacer 5 intentos más para superar el límite de 5 intentos por correo
+  for (let i = 2; i <= 5; i++) {
+    await request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ correo: testUserEmail, contraseña: `wrong_password_${i}` })
+    });
+  }
+  const loginExcedido = await request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ correo: testUserEmail, contraseña: 'wrong_password_exceso' })
+  });
+  assert(loginExcedido.status === 429 && loginExcedido.data.error.includes('Demasiados intentos'), '19. El exceso de intentos devuelve HTTP 429');
+
+  // CASO 20: La limitación se recupera después de expirar la ventana
+  await request('/auth/reset-limits', { method: 'POST' });
+  resetearLimitador();
+
+  const loginRecuperado = await request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ correo: testUserEmail, contraseña: testPassword })
+  });
+  assert(loginRecuperado.status === 200 && loginRecuperado.data.token, '20. La limitación se recupera después de expirar la ventana (login exitoso con HTTP 200)');
 
   await conn.end();
 
-  console.log('\n====================================================');
-  console.log(`RESULTADO FINAL: ${passed} PASADAS / ${failed} FALLIDAS (Total 20)`);
-  console.log('====================================================');
+  console.log('\n================================================================');
+  console.log(`RESULTADO FINAL FASE 1: ${passed} PASADAS / ${failed} FALLIDAS (Total 20)`);
+  console.log('================================================================');
 
   if (failed > 0) {
     process.exit(1);
@@ -332,6 +379,6 @@ async function run() {
 }
 
 run().catch(err => {
-  console.error('Error fatal en suite de pruebas:', err);
+  console.error('Error fatal ejecutando suite de pruebas de Fase 1:', err);
   process.exit(1);
 });

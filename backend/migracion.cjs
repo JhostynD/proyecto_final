@@ -23,6 +23,11 @@ async function migrar() {
       console.log('✓ Columna modalidad agregada a servicios.');
     }
 
+    if (!nombresColsServicios.includes('codigo_prefijo')) {
+      await conn.query("ALTER TABLE servicios ADD COLUMN codigo_prefijo VARCHAR(5) NULL AFTER nombre");
+      console.log('✓ Columna codigo_prefijo agregada a servicios.');
+    }
+
     if (!nombresColsServicios.includes('requiere_tema')) {
       await conn.query("ALTER TABLE servicios ADD COLUMN requiere_tema BOOLEAN NOT NULL DEFAULT FALSE AFTER duracion_estimada_min");
       console.log('✓ Columna requiere_tema agregada a servicios.');
@@ -33,10 +38,11 @@ async function migrar() {
       console.log('✓ Columna descripcion agregada a servicios.');
     }
 
-    // Actualizar y asegurar servicios con modalidades y duraciones reales
+    // Actualizar y asegurar servicios con modalidades, prefijos estables y duraciones reales
     await conn.query(`
       UPDATE servicios SET 
         nombre = 'Asesoría de Crédito', 
+        codigo_prefijo = 'CR',
         modalidad = 'cita', 
         duracion_estimada_min = 30, 
         requiere_tema = TRUE,
@@ -47,6 +53,7 @@ async function migrar() {
     await conn.query(`
       UPDATE servicios SET 
         nombre = 'Soporte Técnico', 
+        codigo_prefijo = 'ST',
         modalidad = 'turno', 
         duracion_estimada_min = 15, 
         requiere_tema = FALSE,
@@ -57,6 +64,7 @@ async function migrar() {
     await conn.query(`
       UPDATE servicios SET 
         nombre = 'Atención General', 
+        codigo_prefijo = 'AG',
         modalidad = 'turno_y_cita', 
         duracion_estimada_min = 20, 
         requiere_tema = FALSE,
@@ -66,17 +74,18 @@ async function migrar() {
 
     // Insertar servicios adicionales requeridos si no existen
     await conn.query(`
-      INSERT INTO servicios (id, nombre, modalidad, duracion_estimada_min, requiere_tema, descripcion, activo)
+      INSERT INTO servicios (id, nombre, codigo_prefijo, modalidad, duracion_estimada_min, requiere_tema, descripcion, activo)
       VALUES 
-        (4, 'Asesoría Financiera', 'cita', 30, TRUE, 'Planificación de inversiones, CDT y gestión de patrimonios.', TRUE),
-        (5, 'Atención Especializada', 'cita', 60, TRUE, 'Consultoría empresarial, comercio exterior y trámites avanzados.', TRUE)
+        (4, 'Asesoría Financiera', 'AF', 'cita', 30, TRUE, 'Planificación de inversiones, CDT y gestión de patrimonios.', TRUE),
+        (5, 'Atención Especializada', 'AE', 'cita', 60, TRUE, 'Consultoría empresarial, comercio exterior y trámites avanzados.', TRUE)
       ON DUPLICATE KEY UPDATE
+        codigo_prefijo = VALUES(codigo_prefijo),
         modalidad = VALUES(modalidad),
         duracion_estimada_min = VALUES(duracion_estimada_min),
         requiere_tema = VALUES(requiere_tema),
         descripcion = VALUES(descripcion)
     `);
-    console.log('✓ Servicios bancarios configurados con duraciones y modalidades.');
+    console.log('✓ Servicios bancarios configurados con duraciones, modalidades y prefijos estables (CR, ST, AG, AF, AE).');
 
     // 2. Columnas en turnos
     const [colsTurnos] = await conn.query('DESCRIBE turnos');
@@ -124,6 +133,29 @@ async function migrar() {
     if (!indexNames.includes('idx_turnos_fecha_estado')) {
       await conn.query('ALTER TABLE turnos ADD INDEX idx_turnos_fecha_estado (fecha, estado, servicio_id)');
       console.log('✓ Índice idx_turnos_fecha_estado creado para consultas rápidas de cola.');
+    }
+
+    // Desambiguar códigos históricos duplicados si existen antes de aplicar restricción única
+    // Esto asegura que registros antiguos no provoquen fallo ni pérdida de datos
+    const [dups] = await conn.query(
+      "SELECT id, codigo_turno FROM turnos WHERE codigo_turno IN (SELECT codigo_turno FROM turnos GROUP BY codigo_turno HAVING COUNT(*) > 1) ORDER BY id ASC"
+    );
+    if (dups.length > 0) {
+      const vistos = new Set();
+      for (const reg of dups) {
+        if (vistos.has(reg.codigo_turno)) {
+          const nuevoCodigo = `${reg.codigo_turno.slice(0, 5)}_${reg.id}`.slice(0, 10);
+          await conn.query("UPDATE turnos SET codigo_turno = ? WHERE id = ?", [nuevoCodigo, reg.id]);
+          console.log(`✓ Código histórico desambiguado en turno ID ${reg.id}: ${reg.codigo_turno} -> ${nuevoCodigo}`);
+        } else {
+          vistos.add(reg.codigo_turno);
+        }
+      }
+    }
+
+    if (!indexNames.includes('idx_turnos_codigo_unico')) {
+      await conn.query('ALTER TABLE turnos ADD UNIQUE INDEX idx_turnos_codigo_unico (codigo_turno)');
+      console.log('✓ Índice único idx_turnos_codigo_unico creado en turnos(codigo_turno).');
     }
 
     // Asegurar formato de datos existentes
