@@ -105,9 +105,23 @@ export function limitarIntentos(req, res, next) {
 }
 
 /**
- * Función auxiliar para pruebas: restablecer contadores de rate limiting.
+ * Restablece contadores de rate limiting.
+ * - En autenticación legítima: si se recibe un correo, elimina los intentos fallidos acumulados
+ *   para esa cuenta tras un inicio de sesión exitoso.
+ * - En pruebas internas (NODE_ENV === 'test'): permite reiniciar mapas en memoria sin exponer
+ *   ninguna ruta HTTP.
+ * - En cualquier otro contexto: no realiza reinicios globales para proteger contra fuerza bruta.
  */
-export function resetearLimitador() {
-  intentosPorIp.clear();
-  intentosPorCorreo.clear();
+export function resetearLimitador(correo = null) {
+  if (correo && typeof correo === 'string') {
+    intentosPorCorreo.delete(correo.trim().toLowerCase());
+    return true;
+  }
+  if (process.env.NODE_ENV === 'test') {
+    intentosPorIp.clear();
+    intentosPorCorreo.clear();
+    return true;
+  }
+  return false;
 }
+

@@ -364,14 +364,10 @@ app.post('/api/auth/login', limitarIntentos, async (req, res) => {
   if (!usuario || !(await bcrypt.compare(contraseña, usuario.contraseña))) {
     return res.status(401).json({ error: 'Correo o contraseña incorrectos.' });
   }
+  // Restablecer contadores legítimos tras autenticación exitosa
+  resetearLimitador(correo);
   const datos = { id: usuario.id, nombre: usuario.nombre, rol: usuario.rol };
   res.json({ token: crearToken(datos), usuario: datos });
-});
-
-// Endpoint auxiliar para pruebas y soporte controlado
-app.post('/api/auth/reset-limits', (req, res) => {
-  resetearLimitador();
-  res.json({ ok: true, mensaje: 'Límites de intentos restablecidos.' });
 });
 
 app.get('/api/auth/perfil', autenticar, async (req, res) => {
@@ -560,7 +556,9 @@ app.post('/api/turnos', autenticar, async (req, res) => {
       return res.status(400).json({ error: 'Los turnos virtuales inmediatos solo están disponibles de lunes a viernes en días hábiles.' });
     }
 
-    const minutosAhora = minutosDesdeMedianoche(horaBogota);
+    const minutosAhora = (process.env.NODE_ENV === 'test' && req.body.horaSimulada)
+      ? minutosDesdeMedianoche(req.body.horaSimulada)
+      : minutosDesdeMedianoche(horaBogota);
     if (minutosAhora < JORNADA_INICIO_MIN || minutosAhora > JORNADA_FIN_MIN) {
       return res.status(400).json({
         error: 'Las solicitudes de turnos virtuales solo se permiten dentro de la jornada de atención (08:00 a. m. a 04:30 p. m., hora de Colombia).'
