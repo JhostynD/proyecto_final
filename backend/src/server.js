@@ -3,12 +3,52 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import 'dotenv/config';
 import { db } from './db.js';
-import { autenticar, crearToken, soloAdmin, limitarIntentos, resetearLimitador } from './auth.js';
+import { autenticar, crearToken, soloAdmin, limitarIntentos, resetearLimitador, revocarToken } from './auth.js';
 import { esFestivoColombia, esDiaHabil, JORNADA_INICIO_MIN, JORNADA_FIN_MIN } from './festivos_colombia.js';
+import { agregarClienteSSE, cerrarClientesSSE, registrarNotificacionEstado } from './notificaciones.js';
 
 const app = express();
 const puerto = Number(process.env.PORT || 3000);
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
+
+// -------------------------------------------------------------
+// CABECERAS DE SEGURIDAD HTTP (equivalente manual a Helmet)
+// -------------------------------------------------------------
+app.use((_req, res, next) => {
+  // Previene que el browser infiera el tipo MIME
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // Deshabilita el renderizado en iframes de otros dominios
+  res.setHeader('X-Frame-Options', 'DENY');
+  // Elimina la cabecera que revela el framework
+  res.removeHeader('X-Powered-By');
+  // Política de referrer conservadora
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // Política de permisos mínima
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // CSP básica para respuestas JSON de API
+  res.setHeader('Content-Security-Policy', "default-src 'none'");
+  next();
+});
+
+// -------------------------------------------------------------
+// CORS — solo permite orígenes explícitamente configurados
+// -------------------------------------------------------------
+const origenesPermitidos = (process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: (origen, callback) => {
+    // Permitir peticiones sin Origin (ej. curl local, tests internos)
+    if (!origen) return callback(null, true);
+    if (origenesPermitidos.includes(origen)) return callback(null, true);
+    return callback(new Error(`Origen CORS no permitido: ${origen}`));
+  },
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: false
+}));
+
 app.use(express.json());
 
 // -------------------------------------------------------------
@@ -339,7 +379,7 @@ app.get('/api/salud', async (_req, res) => {
 });
 
 // ── Autenticación ─────────────────────────────────────────────
-app.post('/api/auth/registro', async (req, res) => {
+app.post('/api/auth/registro', limitarIntentos, async (req, res) => {
   const nombre = req.body.nombre?.trim();
   const correo = req.body.correo?.trim().toLowerCase();
   const contraseña = req.body.contraseña;
@@ -360,8 +400,17 @@ app.post('/api/auth/registro', async (req, res) => {
 app.post('/api/auth/login', limitarIntentos, async (req, res) => {
   const correo = req.body.correo?.trim().toLowerCase();
   const contraseña = req.body.contraseña || '';
-  const [[usuario]] = await db.execute('SELECT id, nombre, correo, contraseña, rol FROM usuarios WHERE correo = ?', [correo]);
+  // Incluir campo 'activo' para rechazar cuentas deshabilitadas
+  const [[usuario]] = await db.execute(
+    'SELECT id, nombre, correo, contraseña, rol, activo FROM usuarios WHERE correo = ?',
+    [correo]
+  );
+  // Mensaje genérico: no revelar si el correo existe ni si la cuenta está deshabilitada
   if (!usuario || !(await bcrypt.compare(contraseña, usuario.contraseña))) {
+    return res.status(401).json({ error: 'Correo o contraseña incorrectos.' });
+  }
+  // Verificar que la cuenta esté habilitada (activo puede ser NULL en esquemas sin la columna aún)
+  if (usuario.activo === 0 || usuario.activo === false) {
     return res.status(401).json({ error: 'Correo o contraseña incorrectos.' });
   }
   // Restablecer contadores legítimos tras autenticación exitosa
@@ -374,6 +423,94 @@ app.get('/api/auth/perfil', autenticar, async (req, res) => {
   const [[usuario]] = await db.execute('SELECT id, nombre, correo, rol FROM usuarios WHERE id = ?', [req.usuario.id]);
   if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado.' });
   res.json(usuario);
+});
+
+// Logout activo: revoca el token JWT actual registrando su jti en la BD
+app.post('/api/auth/logout', autenticar, async (req, res) => {
+  await revocarToken(req.usuario);
+  cerrarClientesSSE(req.usuario.id, 'logout');
+  res.json({ ok: true, mensaje: 'Sesión cerrada correctamente.' });
+});
+
+// =============================================================
+// ENDPOINTS DE NOTIFICACIONES INTERNAS EN TIEMPO REAL (SSE)
+// =============================================================
+
+// Stream SSE de notificaciones en tiempo real para el usuario autenticado
+// Seguro: autenticado mediante cabecera Authorization (no expone JWT en URL)
+app.get('/api/notificaciones/stream', autenticar, (req, res) => {
+  agregarClienteSSE(req.usuario.id, res, req.usuario);
+});
+
+// Listar notificaciones del usuario autenticado con soporte de paginación
+app.get('/api/notificaciones', autenticar, async (req, res) => {
+  const pagina = Math.max(1, parseInt(req.query.pagina, 10) || 1);
+  const limite = Math.min(50, Math.max(1, parseInt(req.query.limite, 10) || 20));
+  const offset = (pagina - 1) * limite;
+
+  const [notificaciones] = await db.query(`
+    SELECT n.id, n.usuario_id, n.turno_id, n.tipo_evento, n.titulo, n.mensaje,
+           n.leido, n.leido_en, n.creado_en,
+           t.codigo_turno, t.estado AS turno_estado, t.modalidad AS turno_modalidad
+    FROM notificaciones n
+    LEFT JOIN turnos t ON t.id = n.turno_id
+    WHERE n.usuario_id = ?
+    ORDER BY n.creado_en DESC, n.id DESC
+    LIMIT ? OFFSET ?
+  `, [req.usuario.id, limite, offset]);
+
+  const [[conteoTotal]] = await db.execute(
+    'SELECT COUNT(*) AS total FROM notificaciones WHERE usuario_id = ?',
+    [req.usuario.id]
+  );
+
+  const total = conteoTotal.total;
+  const totalPaginas = Math.ceil(total / limite);
+
+  res.json({
+    notificaciones,
+    paginacion: {
+      pagina,
+      limite,
+      total,
+      totalPaginas
+    }
+  });
+});
+
+// Contador de notificaciones no leídas
+app.get('/api/notificaciones/no-leidas/conteo', autenticar, async (req, res) => {
+  const [[fila]] = await db.execute(
+    'SELECT COUNT(*) AS conteo FROM notificaciones WHERE usuario_id = ? AND leido = FALSE',
+    [req.usuario.id]
+  );
+  res.json({ conteo: fila.conteo || 0 });
+});
+
+// Marcar una notificación propia como leída
+app.patch('/api/notificaciones/:id/leer', autenticar, async (req, res) => {
+  const notifId = Number(req.params.id);
+  if (!notifId) return res.status(400).json({ error: 'ID de notificación inválido.' });
+
+  const [result] = await db.execute(
+    'UPDATE notificaciones SET leido = TRUE, leido_en = NOW() WHERE id = ? AND usuario_id = ?',
+    [notifId, req.usuario.id]
+  );
+
+  if (result.affectedRows === 0) {
+    return res.status(404).json({ error: 'Notificación no encontrada o no pertenece a tu cuenta.' });
+  }
+
+  res.json({ ok: true, mensaje: 'Notificación marcada como leída.' });
+});
+
+// Marcar todas las notificaciones propias como leídas
+app.patch('/api/notificaciones/leer-todas', autenticar, async (req, res) => {
+  const [result] = await db.execute(
+    'UPDATE notificaciones SET leido = TRUE, leido_en = NOW() WHERE usuario_id = ? AND leido = FALSE',
+    [req.usuario.id]
+  );
+  res.json({ ok: true, actualizadas: result.affectedRows, mensaje: 'Todas las notificaciones fueron marcadas como leídas.' });
 });
 
 // ── Servicios ────────────────────────────────────────────────
@@ -723,7 +860,18 @@ app.post('/api/turnos', autenticar, async (req, res) => {
       [req.usuario.id, servicioId, fecha, `${horaCitaLimpia}:00`, codigo, motivoLimpio]
     );
 
+    // Notificación interna transaccional por confirmación de cita
+    const despachadorNotif = await registrarNotificacionEstado(conn, {
+      turnoId: result.insertId,
+      nuevoEstado: 'confirmado',
+      estadoAnterior: null,
+      usuarioId: req.usuario.id,
+      codigoTurno: codigo,
+      nombreServicio: servicio.nombre
+    });
+
     await conn.commit();
+    if (despachadorNotif?.emitir) despachadorNotif.emitir();
 
     return res.status(201).json({
       id: result.insertId,
@@ -861,21 +1009,56 @@ app.patch('/api/turnos/:id/checkin', autenticar, async (req, res) => {
 });
 
 // ── Cancelar Turno / Cita ─────────────────────────────────────
+// Usa transacción + FOR UPDATE para evitar race condition con check-in simultáneo
 app.patch('/api/turnos/:id/cancelar', autenticar, async (req, res) => {
-  const [filas] = await db.execute('SELECT id, usuario_id, estado FROM turnos WHERE id = ?', [req.params.id]);
-  const turno = filas[0];
-  if (!turno) return res.status(404).json({ error: 'Turno no encontrado.' });
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
 
-  if (req.usuario.rol !== 'admin' && Number(turno.usuario_id) !== req.usuario.id) {
-    return res.status(403).json({ error: 'No tienes autorización para cancelar este turno.' });
+    const [filas] = await conn.execute(
+      `SELECT t.id, t.usuario_id, t.estado, t.codigo_turno, s.nombre AS servicio_nombre
+       FROM turnos t
+       LEFT JOIN servicios s ON s.id = t.servicio_id
+       WHERE t.id = ? FOR UPDATE`,
+      [req.params.id]
+    );
+    const turno = filas[0];
+    if (!turno) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Turno no encontrado.' });
+    }
+
+    if (req.usuario.rol !== 'admin' && Number(turno.usuario_id) !== req.usuario.id) {
+      await conn.rollback();
+      return res.status(403).json({ error: 'No tienes autorización para cancelar este turno.' });
+    }
+
+    if (['completado', 'cancelado', 'no_presentado'].includes(turno.estado)) {
+      await conn.rollback();
+      return res.status(400).json({ error: `No es posible cancelar un turno en estado "${turno.estado}".` });
+    }
+
+    await conn.execute("UPDATE turnos SET estado = 'cancelado' WHERE id = ?", [turno.id]);
+
+    // Notificación interna transaccional por cancelación de turno
+    const despachadorNotif = await registrarNotificacionEstado(conn, {
+      turnoId: turno.id,
+      nuevoEstado: 'cancelado',
+      estadoAnterior: turno.estado,
+      usuarioId: turno.usuario_id,
+      codigoTurno: turno.codigo_turno,
+      nombreServicio: turno.servicio_nombre
+    });
+
+    await conn.commit();
+    if (despachadorNotif?.emitir) despachadorNotif.emitir();
+    res.json({ ok: true, mensaje: 'Turno cancelado correctamente.' });
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
   }
-
-  if (['completado', 'cancelado', 'no_presentado'].includes(turno.estado)) {
-    return res.status(400).json({ error: `No es posible cancelar un turno en estado "${turno.estado}".` });
-  }
-
-  await db.execute("UPDATE turnos SET estado = 'cancelado' WHERE id = ?", [turno.id]);
-  res.json({ ok: true, mensaje: 'Turno cancelado correctamente.' });
 });
 
 // -------------------------------------------------------------
@@ -1003,50 +1186,221 @@ app.get('/api/admin/resumen', autenticar, soloAdmin, async (_req, res) => {
   res.json({ usuarios: usuarios.total, estados, turnos });
 });
 
+// -------------------------------------------------------------
+// ESTADÍSTICAS ADMINISTRATIVAS CON FILTRO DE PERÍODO
+// GET /api/admin/estadisticas?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+//
+// Determina qué turnos incluye: los que tienen fecha >= desde y <= hasta.
+// La columna `fecha` (DATE) es la fecha en que estaba programado el turno,
+// que es el concepto de negocio más significativo para estadísticas.
+// Rango máximo permitido: 366 días (≈ 1 año); mínimo: 1 día.
+// Todos los parámetros de fecha son validados contra el formato YYYY-MM-DD
+// y un patrón explícito antes de interpolarlos en las consultas.
+// -------------------------------------------------------------
+const ISO_DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+app.get('/api/admin/estadisticas', autenticar, soloAdmin, async (req, res) => {
+  // --- Resolución del rango de fechas ---
+  const hoy = new Date();
+  const hoyStr = hoy.toISOString().slice(0, 10);
+
+  let { desde, hasta, periodo } = req.query;
+
+  // Si se pasan fechas personalizadas, validarlas estrictamente
+  if (desde || hasta) {
+    if (!ISO_DATE_RE.test(desde) || !ISO_DATE_RE.test(hasta)) {
+      return res.status(400).json({ error: 'Los parámetros "desde" y "hasta" deben tener el formato YYYY-MM-DD.' });
+    }
+    if (desde > hasta) {
+      return res.status(400).json({ error: 'La fecha "desde" no puede ser posterior a "hasta".' });
+    }
+    // Limitar a máximo 366 días para evitar consultas excesivas
+    const msDiff = new Date(hasta) - new Date(desde);
+    const dias = Math.round(msDiff / 86400000) + 1;
+    if (dias > 366) {
+      return res.status(400).json({ error: 'El rango de fechas no puede superar los 366 días.' });
+    }
+  } else {
+    // Período predefinido
+    const diasPeriodo = periodo === '90d' ? 90 : periodo === '30d' ? 30 : 7;
+    const desdeDate = new Date(hoy);
+    desdeDate.setDate(hoy.getDate() - diasPeriodo + 1);
+    desde = desdeDate.toISOString().slice(0, 10);
+    hasta = hoyStr;
+  }
+
+  // Segunda verificación por consistencia (nunca debe fallar si la lógica previa es correcta)
+  if (!ISO_DATE_RE.test(desde) || !ISO_DATE_RE.test(hasta)) {
+    return res.status(400).json({ error: 'Fechas internas inválidas. Contacte al soporte.' });
+  }
+
+  // --- Ejecutar consultas en paralelo ---
+  const [
+    [kpiEstados],
+    [turnosPorDia],
+    [serviciosTop],
+    [[totalesGlobal]]
+  ] = await Promise.all([
+    // 1. KPI: total de turnos agrupado por estado dentro del rango
+    db.execute(
+      `SELECT estado, COUNT(*) AS total
+       FROM turnos
+       WHERE fecha BETWEEN ? AND ?
+       GROUP BY estado`,
+      [desde, hasta]
+    ),
+
+    // 2. Serie temporal: turnos creados por día en el rango
+    db.execute(
+      `SELECT DATE_FORMAT(fecha, '%Y-%m-%d') AS dia, COUNT(*) AS total
+       FROM turnos
+       WHERE fecha BETWEEN ? AND ?
+       GROUP BY dia
+       ORDER BY dia ASC`,
+      [desde, hasta]
+    ),
+
+    // 3. Top 8 servicios más solicitados en el rango
+    db.execute(
+      `SELECT s.nombre AS servicio, COUNT(t.id) AS total
+       FROM turnos t
+       JOIN servicios s ON s.id = t.servicio_id
+       WHERE t.fecha BETWEEN ? AND ?
+       GROUP BY s.id, s.nombre
+       ORDER BY total DESC
+       LIMIT 8`,
+      [desde, hasta]
+    ),
+
+    // 4. Totales generales (usuarios activos) — no filtrados por rango porque son datos globales
+    db.query(`
+      SELECT
+        (SELECT COUNT(*) FROM usuarios WHERE activo = 1) AS usuarios_activos,
+        (SELECT COUNT(*) FROM turnos WHERE fecha BETWEEN ? AND ?) AS turnos_periodo
+    `, [desde, hasta])
+  ]);
+
+  // --- Calcular KPIs derivados ---
+  const kpiMap = {};
+  let totalPeriodo = 0;
+  for (const fila of kpiEstados) {
+    kpiMap[fila.estado] = Number(fila.total);
+    totalPeriodo += Number(fila.total);
+  }
+
+  const cancelados = kpiMap['cancelado'] || 0;
+  const completados = kpiMap['completado'] || 0;
+  const pendientes = (kpiMap['pendiente'] || 0) + (kpiMap['confirmado'] || 0) + (kpiMap['en_espera'] || 0);
+  const enProceso = (kpiMap['llamando'] || 0) + (kpiMap['en_atencion'] || 0);
+  const noAtendidos = kpiMap['no_presentado'] || 0;
+
+  // Tasa de cancelación = cancelados / (cancelados + completados + no_presentado) × 100
+  // Denominador: turnos cuyo resultado final ya es conocido (excluye estados en curso)
+  const denominadorCancelacion = cancelados + completados + noAtendidos;
+  const tasaCancelacion = denominadorCancelacion > 0
+    ? Math.round((cancelados / denominadorCancelacion) * 1000) / 10
+    : null; // null cuando no hay datos suficientes
+
+  res.json({
+    periodo: { desde, hasta },
+    kpi: {
+      total: totalPeriodo,
+      pendientes,
+      en_proceso: enProceso,
+      completados,
+      cancelados,
+      no_presentados: noAtendidos,
+      usuarios_activos: Number(totalesGlobal.usuarios_activos),
+      tasa_cancelacion: tasaCancelacion,
+      formula_cancelacion: 'cancelados / (cancelados + completados + no_presentados) × 100'
+    },
+    por_estado: kpiEstados.map(e => ({ estado: e.estado, total: Number(e.total) })),
+    por_dia: turnosPorDia.map(d => ({ dia: d.dia, total: Number(d.total) })),
+    servicios_top: serviciosTop.map(s => ({ servicio: s.servicio, total: Number(s.total) }))
+  });
+});
+
 app.get('/api/admin/usuarios', autenticar, soloAdmin, async (_req, res) => {
   const [usuarios] = await db.query('SELECT id, nombre, correo, rol, creado_en FROM usuarios ORDER BY creado_en DESC');
   res.json(usuarios);
 });
 
 // Actualizar estado de turno como Administrador con validación estricta de transiciones
+// Usa transacción + FOR UPDATE para serializar transiciones concurrentes
 app.patch('/api/admin/turnos/:id', autenticar, soloAdmin, async (req, res) => {
   const { estado, modulo } = req.body;
   if (!ESTADOS_VALIDOS.has(estado)) {
     return res.status(400).json({ error: `El estado "${estado}" no es válido.` });
   }
 
-  const [filas] = await db.execute('SELECT * FROM turnos WHERE id = ?', [req.params.id]);
-  const turno = filas[0];
-  if (!turno) return res.status(404).json({ error: 'Turno no encontrado.' });
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
 
-  const transicionesPermitidas = TRANSICIONES_VALIDAS[turno.estado] || new Set();
-  if (!transicionesPermitidas.has(estado) && estado !== turno.estado) {
-    return res.status(400).json({
-      error: `Transición no permitida: no se puede pasar de "${turno.estado}" a "${estado}".`
-    });
+    // FOR UPDATE bloquea la fila para serializar transiciones concurrentes
+    const [filas] = await conn.execute(`
+      SELECT t.*, s.nombre AS servicio_nombre
+      FROM turnos t
+      LEFT JOIN servicios s ON s.id = t.servicio_id
+      WHERE t.id = ? FOR UPDATE
+    `, [req.params.id]);
+    const turno = filas[0];
+    if (!turno) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Turno no encontrado.' });
+    }
+
+    const transicionesPermitidas = TRANSICIONES_VALIDAS[turno.estado] || new Set();
+    if (!transicionesPermitidas.has(estado) && estado !== turno.estado) {
+      await conn.rollback();
+      return res.status(400).json({
+        error: `Transición no permitida: no se puede pasar de "${turno.estado}" a "${estado}".`
+      });
+    }
+
+    const nuevoModulo = modulo !== undefined ? modulo : turno.modulo;
+
+    let queryUpdate = 'UPDATE turnos SET estado = ?, modulo = ?';
+    const params = [estado, nuevoModulo];
+
+    if (estado === 'en_atencion' && !turno.atencion_inicio_en) {
+      queryUpdate += ', atencion_inicio_en = NOW()';
+    }
+    if (estado === 'completado' && !turno.atencion_fin_en) {
+      queryUpdate += ', atencion_fin_en = NOW()';
+    }
+    if (estado === 'llamando' && !turno.llamado_en) {
+      queryUpdate += ', llamado_en = NOW()';
+    }
+
+    queryUpdate += ' WHERE id = ?';
+    params.push(req.params.id);
+
+    await conn.execute(queryUpdate, params);
+
+    // Notificación interna si el estado cambia realmente a confirmado, cancelado o completado
+    let despachadorNotif = null;
+    if (['confirmado', 'cancelado', 'completado'].includes(estado) && estado !== turno.estado) {
+      despachadorNotif = await registrarNotificacionEstado(conn, {
+        turnoId: turno.id,
+        nuevoEstado: estado,
+        estadoAnterior: turno.estado,
+        usuarioId: turno.usuario_id,
+        codigoTurno: turno.codigo_turno,
+        nombreServicio: turno.servicio_nombre
+      });
+    }
+
+    await conn.commit();
+    if (despachadorNotif?.emitir) despachadorNotif.emitir();
+
+    res.json({ mensaje: `Turno actualizado a "${estado}".`, estado, modulo: nuevoModulo });
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
   }
-
-  const nuevoModulo = modulo !== undefined ? modulo : turno.modulo;
-
-  let queryUpdate = 'UPDATE turnos SET estado = ?, modulo = ?';
-  const params = [estado, nuevoModulo];
-
-  if (estado === 'en_atencion' && !turno.atencion_inicio_en) {
-    queryUpdate += ', atencion_inicio_en = NOW()';
-  }
-  if (estado === 'completado' && !turno.atencion_fin_en) {
-    queryUpdate += ', atencion_fin_en = NOW()';
-  }
-  if (estado === 'llamando' && !turno.llamado_en) {
-    queryUpdate += ', llamado_en = NOW()';
-  }
-
-  queryUpdate += ' WHERE id = ?';
-  params.push(req.params.id);
-
-  await db.execute(queryUpdate, params);
-
-  res.json({ mensaje: `Turno actualizado a "${estado}".`, estado, modulo: nuevoModulo });
 });
 
 app.delete('/api/admin/usuarios/:id', autenticar, soloAdmin, async (req, res) => {
@@ -1055,7 +1409,30 @@ app.delete('/api/admin/usuarios/:id', autenticar, soloAdmin, async (req, res) =>
   }
   const [result] = await db.execute('DELETE FROM usuarios WHERE id = ?', [req.params.id]);
   if (!result.affectedRows) return res.status(404).json({ error: 'Usuario no encontrado.' });
+  cerrarClientesSSE(req.params.id, 'cuenta_eliminada');
   res.json({ mensaje: 'Usuario eliminado.' });
+});
+
+// Habilitar / deshabilitar cuenta de usuario (admin)
+// Al deshabilitar, el usuario no puede iniciar sesión (mensaje genérico);
+// los tokens existentes quedan inválidos en el próximo intento de login.
+app.patch('/api/admin/usuarios/:id/estado', autenticar, soloAdmin, async (req, res) => {
+  const { activo } = req.body;
+  if (typeof activo !== 'boolean') {
+    return res.status(400).json({ error: 'El campo "activo" debe ser true o false.' });
+  }
+  if (Number(req.params.id) === req.usuario.id) {
+    return res.status(400).json({ error: 'No puedes deshabilitar tu propia cuenta.' });
+  }
+  const [result] = await db.execute(
+    'UPDATE usuarios SET activo = ? WHERE id = ?',
+    [activo ? 1 : 0, req.params.id]
+  );
+  if (!result.affectedRows) return res.status(404).json({ error: 'Usuario no encontrado.' });
+  if (!activo) {
+    cerrarClientesSSE(req.params.id, 'cuenta_deshabilitada');
+  }
+  res.json({ ok: true, activo, mensaje: activo ? 'Cuenta habilitada.' : 'Cuenta deshabilitada. El usuario no podrá iniciar sesión.' });
 });
 
 // -------------------------------------------------------------
@@ -1134,8 +1511,31 @@ if (temporizadorVencimientos.unref) {
   temporizadorVencimientos.unref(); // Permite que el proceso termine limpiamente si no hay sockets activos
 }
 
+// Limpieza periódica de sesiones_revocadas expiradas (cada hora)
+// Elimina registros cuyo token ya habría expirado naturalmente (sin riesgo de re-uso)
+const temporizadorLimpiezaSesiones = setInterval(async () => {
+  try {
+    await db.execute('DELETE FROM sesiones_revocadas WHERE expira_en < NOW()');
+  } catch (err) {
+    if (err.code !== 'ER_NO_SUCH_TABLE') {
+      console.error('[SesionesRevocadas] Error en limpieza periódica:', err.message);
+    }
+  }
+}, 60 * 60 * 1000);
+
+if (temporizadorLimpiezaSesiones.unref) {
+  temporizadorLimpiezaSesiones.unref();
+}
+
+
 app.use((error, _req, res, _next) => {
-  console.error(error);
+  // En producción: solo loggear mensaje, nunca el stack completo en la respuesta
+  if (process.env.NODE_ENV === 'production') {
+    console.error('[ERROR]', error.message);
+  } else {
+    console.error(error);
+  }
+  // Nunca exponer detalles internos al cliente
   res.status(500).json({ error: 'Error interno del servidor.' });
 });
 

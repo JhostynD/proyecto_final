@@ -20,12 +20,13 @@ async function run() {
   let passed = 0;
   let failed = 0;
 
-  function assert(condition, message) {
+  function assert(condition, message, debugData) {
     if (condition) {
       console.log(`✓ [PASÓ] ${message}`);
       passed++;
     } else {
       console.error(`✗ [FALLÓ] ${message}`);
+      if (debugData) console.error('   Detalles:', debugData);
       failed++;
     }
   }
@@ -286,15 +287,18 @@ async function run() {
     // -------------------------------------------------------------
     console.log('\n--- 1B: Jornada, fines de semana y festivos colombianos ---');
 
+    // Helper para formatear fecha local YYYY-MM-DD sin desfase UTC
+    const formatLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
     // Calcular próximo sábado y domingo garantizados como fechas futuras
     const dHoy = new Date();
     const dSab = new Date(dHoy);
     dSab.setDate(dHoy.getDate() + ((6 - dHoy.getDay() + 7) % 7 || 7));
-    const sabado = dSab.toISOString().slice(0, 10);
+    const sabado = formatLocal(dSab);
 
     const dDom = new Date(dHoy);
     dDom.setDate(dHoy.getDate() + ((7 - dHoy.getDay()) % 7 || 7));
-    const domingo = dDom.toISOString().slice(0, 10);
+    const domingo = formatLocal(dDom);
 
     const festivo = '2026-11-02'; // Festivo oficial colombiano (Todos los Santos)
 
@@ -310,7 +314,7 @@ async function run() {
       token: userToken,
       body: JSON.stringify({ servicioId: 1, modalidad: 'cita', fecha: domingo, hora: '10:00', motivo: 'Prueba Domingo' })
     });
-    assert(rDomingo.status === 400 && rDomingo.data.error.includes('fines de semana'), '7. Se rechaza un domingo para agendar cita');
+    assert(rDomingo.status === 400 && rDomingo.data.error.includes('fines de semana'), '7. Se rechaza un domingo para agendar cita', rDomingo);
 
     const rFestivo = await request('/turnos', {
       method: 'POST',
@@ -344,10 +348,27 @@ async function run() {
     // -------------------------------------------------------------
     console.log('\n--- 1C: Límites de turnos activos sin afectar datos ajenos ---');
 
-    // Fechas hábiles de prueba
-    const diaHabil1 = '2026-10-21';
-    const diaHabil2 = '2026-10-22';
-    const diaHabil3 = '2026-10-23';
+    // Fechas hábiles de prueba — calculadas dinámicamente para evitar que caduquen
+    // Busca los próximos 3 días hábiles (lunes a viernes, no festivos) a partir de mañana
+    function siguienteDiaHabil(desde = new Date(), saltar = 0) {
+      const d = new Date(desde);
+      d.setDate(d.getDate() + 1);
+      let saltados = 0;
+      while (true) {
+        const dia = d.getDay(); // 0=Dom, 6=Sab (local)
+        if (dia !== 0 && dia !== 6) {
+          if (saltados === saltar) {
+            return formatLocal(d);
+          }
+          saltados++;
+        }
+        d.setDate(d.getDate() + 1);
+      }
+    }
+    const diaHabil1 = siguienteDiaHabil(new Date(), 0);
+    const diaHabil2 = siguienteDiaHabil(new Date(), 1);
+    const diaHabil3 = siguienteDiaHabil(new Date(), 2);
+
 
     // FASE 3.3: NUNCA hacer DELETE por fecha general ni UPDATE masivo a toda la base.
     // Solo actualizamos el estado de turnos pertenecientes al usuario de prueba userId
@@ -381,7 +402,7 @@ async function run() {
       token: userToken,
       body: JSON.stringify({ servicioId: 1, modalidad: 'cita', fecha: diaHabil1, hora: '14:00', motivo: 'Cita 4' })
     });
-    assert(rCuarto.status === 400 && rCuarto.data.error.includes('límite máximo permitido de 3 turnos'), '12. El cuarto turno activo del mismo usuario se rechaza');
+    assert(rCuarto.status === 400 && rCuarto.data.error.includes('límite máximo permitido de 3 turnos'), '12. El cuarto turno activo del mismo usuario se rechaza', rCuarto);
 
     // CASO 13: Solicitudes concurrentes no superan el límite por usuario
     const concEmail = `conc_${ts}_${Math.floor(Math.random() * 10000)}@test.filacero.com`;
@@ -582,7 +603,7 @@ async function run() {
   }
 
   console.log('\n================================================================');
-  console.log(`RESULTADO FINAL FASE 1: ${passed} PASADAS / ${failed} FALLIDAS (Total 20)`);
+  console.log(`RESULTADO FINAL: ${passed} PASADAS / ${failed} FALLIDAS (Total ${passed + failed})`);
   console.log('================================================================');
 
   if (failed > 0) {

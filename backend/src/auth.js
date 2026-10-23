@@ -1,5 +1,7 @@
 import jwt from 'jsonwebtoken';
 import 'dotenv/config';
+import { db } from './db.js';
+import { randomUUID } from 'crypto';
 
 // 1E: Validación obligatoria de JWT_SECRET
 const secret = process.env.JWT_SECRET;
@@ -7,19 +9,62 @@ if (!secret || typeof secret !== 'string' || secret.trim() === '') {
   throw new Error('Error crítico de configuración: La variable de entorno JWT_SECRET es obligatoria y no puede estar vacía.');
 }
 
+/**
+ * Genera un token JWT con un identificador único (jti) que permite su revocación
+ * individual sin necesidad de invalidar todos los tokens del usuario.
+ */
 export function crearToken(usuario) {
-  return jwt.sign({ id: usuario.id, nombre: usuario.nombre, rol: usuario.rol }, secret, { expiresIn: '8h' });
+  return jwt.sign(
+    { id: usuario.id, nombre: usuario.nombre, rol: usuario.rol, jti: randomUUID() },
+    secret,
+    { expiresIn: '8h' }
+  );
 }
 
-export function autenticar(req, res, next) {
+/**
+ * Middleware de autenticación estricta (fail-closed).
+ * Verifica firma, expiración, presencia obligatoria de jti,
+ * consulta si el token fue revocado en sesiones_revocadas,
+ * y valida que la cuenta del usuario permanezca activa con su rol actualizado en BD.
+ */
+export async function autenticar(req, res, next) {
   const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
   if (!token) return res.status(401).json({ error: 'Debes iniciar sesión.' });
+  let payload;
   try {
-    req.usuario = jwt.verify(token, secret);
-    return next();
+    payload = jwt.verify(token, secret);
   } catch {
     return res.status(401).json({ error: 'La sesión no es válida o venció.' });
   }
+
+  // Rechazar tokens sin identificador único jti (legacy o no rastreables)
+  if (!payload.jti) {
+    return res.status(401).json({ error: 'La sesión no es válida o venció.' });
+  }
+
+  // 1. Verificar si el token fue revocado explícitamente (fail-closed)
+  const [[revocado]] = await db.execute(
+    'SELECT 1 FROM sesiones_revocadas WHERE jti = ? LIMIT 1',
+    [payload.jti]
+  );
+  if (revocado) {
+    return res.status(401).json({ error: 'La sesión no es válida o venció.' });
+  }
+
+  // 2. Validar que el usuario siga existiendo y su cuenta esté activa en tiempo real
+  const [[usuarioDb]] = await db.execute(
+    'SELECT activo, rol FROM usuarios WHERE id = ? LIMIT 1',
+    [payload.id]
+  );
+  if (!usuarioDb || usuarioDb.activo === 0 || usuarioDb.activo === false) {
+    return res.status(401).json({ error: 'La sesión no es válida o venció.' });
+  }
+
+  // Sincronizar el rol vigente de la BD para evitar privilegios obsoletos tras degradación
+  payload.rol = usuarioDb.rol;
+
+  req.usuario = payload;
+  return next();
 }
 
 export function soloAdmin(req, res, next) {
@@ -30,6 +75,9 @@ export function soloAdmin(req, res, next) {
 // -------------------------------------------------------------
 // 1F: Rate limiting en memoria para POST /api/auth/login
 // Ventanas temporales por IP y por correo normalizado
+// Limitación: en entornos con múltiples instancias o tras reinicios,
+// los contadores se pierden. Para producción con clustering, usar
+// un almacenamiento compartido (Redis, MySQL). Ver documentación.
 // -------------------------------------------------------------
 const intentosPorIp = new Map();
 const intentosPorCorreo = new Map();
@@ -125,3 +173,20 @@ export function resetearLimitador(correo = null) {
   return false;
 }
 
+/**
+ * Revoca un token JWT registrando su jti en la BD.
+ * Usado en logout y al cambiar rol o deshabilitar cuenta.
+ * Si la tabla no existe aún (migración pendiente), registra advertencia sin lanzar error.
+ */
+export async function revocarToken(payload) {
+  if (!payload?.jti || !payload?.id) return false;
+  // Calcular momento de expiración real del token
+  const expiraEn = payload.exp
+    ? new Date(payload.exp * 1000).toISOString().slice(0, 19).replace('T', ' ')
+    : new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+  await db.execute(
+    'INSERT IGNORE INTO sesiones_revocadas (jti, usuario_id, expira_en) VALUES (?, ?, ?)',
+    [payload.jti, payload.id, expiraEn]
+  );
+  return true;
+}

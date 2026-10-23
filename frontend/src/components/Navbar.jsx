@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { cerrarSesion, obtenerSesion } from "../lib/auth";
+import { obtenerSesion } from "../lib/auth";
+import { cerrarSesionActiva } from "../lib/api";
+import CampanaNotificaciones from "./CampanaNotificaciones";
 import logoImg from "../assets/logo.png";
 import "./Navbar.css";
 
@@ -18,11 +20,10 @@ function Navbar() {
 
   const cerrarMenu = () => setMenuAbierto(false);
 
-  function salir() {
+  async function salir() {
     cerrarMenu();
-    cerrarSesion();
+    await cerrarSesionActiva();
     setSesion(null);
-    window.dispatchEvent(new Event("sesion-cerrada"));
     navegar("/");
   }
 
@@ -85,13 +86,16 @@ function Navbar() {
 
           <div className="nav-auth">
             {sesion ? (
-              <div className="user-menu">
-                <span className="user-greeting">
-                  {sesion.usuario?.nombre ? sesion.usuario.nombre.split(" ")[0] : "Usuario"}
-                </span>
-                <button className="btn-logout" onClick={salir} title="Cerrar sesión">
-                  Salir
-                </button>
+              <div className="user-nav-actions" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <CampanaNotificaciones />
+                <div className="user-menu">
+                  <span className="user-greeting">
+                    {sesion.usuario?.nombre ? sesion.usuario.nombre.split(" ")[0] : "Usuario"}
+                  </span>
+                  <button className="btn-logout" onClick={salir} title="Cerrar sesión">
+                    Salir
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="auth-buttons">
