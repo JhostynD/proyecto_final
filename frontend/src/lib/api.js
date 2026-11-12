@@ -30,6 +30,7 @@ export async function api(ruta, opciones = {}) {
         typeof window !== "undefined" &&
         (window.location.pathname.startsWith("/admin") ||
           window.location.pathname === "/usuarios" ||
+          window.location.pathname === "/servicios" ||
           window.location.pathname === "/gestion-turnos");
 
       if (esRutaAdmin || enPantallaAdmin) {

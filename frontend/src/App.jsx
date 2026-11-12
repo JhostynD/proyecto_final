@@ -9,10 +9,9 @@ import DashboardAdmin from "./pages/DashboardAdmin";
 import DashboardUsuario from "./pages/DashboardUsuario";
 import GestionUsuarios from "./pages/GestionUsuarios";
 import GestionTurnos from "./pages/GestionTurnos";
+import GestionServicios from "./pages/GestionServicios";
 import NotFound from "./pages/NotFound";
 import RutaProtegida from "./components/RutaProtegida";
-
-
 
 function App() {
   return (
@@ -33,6 +32,7 @@ function App() {
         <Route element={<RutaProtegida admin />}>
           <Route path="/admin" element={<DashboardAdmin />} />
           <Route path="/usuarios" element={<GestionUsuarios />} />
+          <Route path="/servicios" element={<GestionServicios />} />
           <Route path="/gestion-turnos" element={<GestionTurnos />} />
         </Route>
 

@@ -147,18 +147,12 @@ const PREFIJOS_OFICIALES = {
 
 // Generador determinístico y transaccional de código bancario único
 async function generarCodigoTurno(conn, fecha, servicioId) {
-  let prefijo = PREFIJOS_OFICIALES[servicioId];
-
-  // Si no está en el mapa estático, buscar en la columna codigo_prefijo de la base de datos
-  if (!prefijo) {
-    const [[srv]] = await conn.execute(
-      'SELECT codigo_prefijo FROM servicios WHERE id = ? FOR UPDATE',
-      [servicioId]
-    );
-    if (srv && srv.codigo_prefijo) {
-      prefijo = srv.codigo_prefijo.trim().toUpperCase();
-    }
-  }
+  // Consultar prefijo directamente del servicio para reflejar actualizaciones de administración
+  const [[srv]] = await conn.execute(
+    'SELECT codigo_prefijo FROM servicios WHERE id = ? FOR UPDATE',
+    [servicioId]
+  );
+  let prefijo = srv && srv.codigo_prefijo ? srv.codigo_prefijo.trim().toUpperCase() : PREFIJOS_OFICIALES[servicioId];
 
   if (!prefijo) {
     throw new Error(`El servicio ${servicioId} no tiene un prefijo de código asignado.`);
@@ -1433,6 +1427,373 @@ app.patch('/api/admin/usuarios/:id/estado', autenticar, soloAdmin, async (req, r
     cerrarClientesSSE(req.params.id, 'cuenta_deshabilitada');
   }
   res.json({ ok: true, activo, mensaje: activo ? 'Cuenta habilitada.' : 'Cuenta deshabilitada. El usuario no podrá iniciar sesión.' });
+});
+
+// ── Gestión Administrativa de Servicios ─────────────────────
+
+const MODALIDADES_SERVICIOS_VALIDAS = new Set(['turno', 'cita', 'turno_y_cita']);
+const CAMPOS_PERMITIDOS_SERVICIO = new Set([
+  'nombre',
+  'codigo_prefijo',
+  'modalidad',
+  'duracion_estimada_min',
+  'requiere_tema',
+  'descripcion'
+]);
+
+// 1. Listar todos los servicios (activos e inactivos) para administración
+app.get('/api/admin/servicios', autenticar, soloAdmin, async (_req, res) => {
+  try {
+    const [servicios] = await db.query(`
+      SELECT id, nombre, codigo_prefijo, modalidad, duracion_estimada_min, requiere_tema, descripcion, activo
+      FROM servicios
+      ORDER BY id ASC
+    `);
+    const procesados = servicios.map(s => ({
+      ...s,
+      requiere_tema: Boolean(s.requiere_tema),
+      activo: Boolean(s.activo)
+    }));
+    res.json(procesados);
+  } catch (err) {
+    console.error('Error al obtener servicios para administración:', err);
+    res.status(500).json({ error: 'No fue posible obtener los servicios.' });
+  }
+});
+
+// 2. Crear un nuevo servicio
+app.post('/api/admin/servicios', autenticar, soloAdmin, async (req, res) => {
+  const camposRecibidos = Object.keys(req.body);
+  const camposNoPermitidos = camposRecibidos.filter(c => !CAMPOS_PERMITIDOS_SERVICIO.has(c));
+  if (camposNoPermitidos.length > 0) {
+    return res.status(400).json({ error: `Campos no permitidos en la creación: ${camposNoPermitidos.join(', ')}.` });
+  }
+
+  let { nombre, codigo_prefijo, modalidad, duracion_estimada_min, requiere_tema, descripcion } = req.body;
+
+  // Validación de 'nombre'
+  if (typeof nombre !== 'string' || nombre.trim().length < 3 || nombre.trim().length > 100) {
+    return res.status(400).json({ error: 'El nombre es obligatorio y debe tener entre 3 y 100 caracteres.' });
+  }
+  nombre = nombre.trim();
+
+  // Validación de 'codigo_prefijo'
+  if (typeof codigo_prefijo !== 'string' || !/^[A-Za-z0-9]{2,5}$/.test(codigo_prefijo.trim())) {
+    return res.status(400).json({ error: 'El código prefijo es obligatorio y debe tener entre 2 y 5 caracteres alfanuméricos.' });
+  }
+  codigo_prefijo = codigo_prefijo.trim().toUpperCase();
+
+  // Validación de 'modalidad'
+  if (!MODALIDADES_SERVICIOS_VALIDAS.has(modalidad)) {
+    return res.status(400).json({ error: 'La modalidad debe ser "turno", "cita" o "turno_y_cita".' });
+  }
+
+  // Validación de 'duracion_estimada_min'
+  duracion_estimada_min = Number(duracion_estimada_min);
+  if (!Number.isInteger(duracion_estimada_min) || duracion_estimada_min < 5 || duracion_estimada_min > 480) {
+    return res.status(400).json({ error: 'La duración estimada debe ser un número entero entre 5 y 480 minutos.' });
+  }
+
+  // Validación de 'requiere_tema'
+  if (requiere_tema !== undefined && typeof requiere_tema !== 'boolean') {
+    return res.status(400).json({ error: 'El campo "requiere_tema" debe ser un booleano (true o false).' });
+  }
+  const requiereTemaBool = Boolean(requiere_tema);
+
+  // Validación de 'descripcion'
+  if (descripcion !== undefined && descripcion !== null) {
+    if (typeof descripcion !== 'string') {
+      return res.status(400).json({ error: 'La descripción debe ser una cadena de texto.' });
+    }
+    if (descripcion.trim().length > 255) {
+      return res.status(400).json({ error: 'La descripción no puede exceder los 255 caracteres.' });
+    }
+    descripcion = descripcion.trim() || null;
+  } else {
+    descripcion = null;
+  }
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // Verificación de duplicados con bloqueo para control de concurrencia
+    const [[nombreExiste]] = await conn.execute(
+      'SELECT id FROM servicios WHERE LOWER(nombre) = LOWER(?) LIMIT 1 FOR UPDATE',
+      [nombre]
+    );
+    if (nombreExiste) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Ya existe un servicio con ese nombre.' });
+    }
+
+    const [[prefijoExiste]] = await conn.execute(
+      'SELECT id FROM servicios WHERE UPPER(codigo_prefijo) = ? LIMIT 1 FOR UPDATE',
+      [codigo_prefijo]
+    );
+    if (prefijoExiste) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'El código prefijo ya está en uso por otro servicio.' });
+    }
+
+    const [result] = await conn.execute(
+      `INSERT INTO servicios (nombre, codigo_prefijo, modalidad, duracion_estimada_min, requiere_tema, descripcion, activo)
+       VALUES (?, ?, ?, ?, ?, ?, TRUE)`,
+      [nombre, codigo_prefijo, modalidad, duracion_estimada_min, requiereTemaBool, descripcion]
+    );
+
+    await conn.commit();
+
+    res.status(201).json({
+      id: result.insertId,
+      nombre,
+      codigo_prefijo,
+      modalidad,
+      duracion_estimada_min,
+      requiere_tema: requiereTemaBool,
+      descripcion,
+      activo: true,
+      mensaje: 'Servicio creado exitosamente.'
+    });
+  } catch (err) {
+    await conn.rollback();
+    if (err.code === 'ER_DUP_ENTRY' || err.errno === 1062) {
+      const msg = err.message || '';
+      if (msg.includes('nombre')) {
+        return res.status(400).json({ error: 'Ya existe un servicio con ese nombre.' });
+      }
+      if (msg.includes('codigo_prefijo')) {
+        return res.status(400).json({ error: 'El código prefijo ya está en uso por otro servicio.' });
+      }
+      return res.status(400).json({ error: 'Conflicto de duplicidad con datos existentes.' });
+    }
+    console.error('Error al crear servicio:', err);
+    res.status(500).json({ error: 'Error interno al registrar el servicio.' });
+  } finally {
+    conn.release();
+  }
+});
+
+// 3. Editar datos de un servicio existente (PATCH /api/admin/servicios/:id)
+app.patch('/api/admin/servicios/:id', autenticar, soloAdmin, async (req, res) => {
+  const servicioId = Number(req.params.id);
+  if (!Number.isInteger(servicioId) || servicioId <= 0) {
+    return res.status(400).json({ error: 'Identificador de servicio no válido.' });
+  }
+
+  // Protección: prevenir modificación no autorizada de id o de estado activo
+  if (req.body.id !== undefined) {
+    return res.status(400).json({ error: 'El identificador del servicio no puede ser modificado.' });
+  }
+  if (req.body.activo !== undefined) {
+    return res.status(400).json({ error: 'El estado del servicio debe modificarse a través del endpoint dedicado /estado.' });
+  }
+
+  const camposRecibidos = Object.keys(req.body);
+  const camposNoPermitidos = camposRecibidos.filter(c => !CAMPOS_PERMITIDOS_SERVICIO.has(c));
+  if (camposNoPermitidos.length > 0) {
+    return res.status(400).json({ error: `Campos no permitidos en la actualización: ${camposNoPermitidos.join(', ')}.` });
+  }
+  if (camposRecibidos.length === 0) {
+    return res.status(400).json({ error: 'Debes proporcionar al menos un campo para actualizar.' });
+  }
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [[servicio]] = await conn.execute(
+      'SELECT id, nombre, codigo_prefijo, modalidad, duracion_estimada_min, requiere_tema, descripcion, activo FROM servicios WHERE id = ? FOR UPDATE',
+      [servicioId]
+    );
+    if (!servicio) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Servicio no encontrado.' });
+    }
+
+    const updates = [];
+    const params = [];
+
+    // Validar nombre
+    if (req.body.nombre !== undefined) {
+      if (typeof req.body.nombre !== 'string' || req.body.nombre.trim().length < 3 || req.body.nombre.trim().length > 100) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'El nombre debe tener entre 3 y 100 caracteres.' });
+      }
+      const nuevoNombre = req.body.nombre.trim();
+      const [[nombreDup]] = await conn.execute(
+        'SELECT id FROM servicios WHERE LOWER(nombre) = LOWER(?) AND id != ? LIMIT 1 FOR UPDATE',
+        [nuevoNombre, servicioId]
+      );
+      if (nombreDup) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Ya existe otro servicio con ese nombre.' });
+      }
+      updates.push('nombre = ?');
+      params.push(nuevoNombre);
+    }
+
+    // Validar codigo_prefijo
+    if (req.body.codigo_prefijo !== undefined) {
+      if (typeof req.body.codigo_prefijo !== 'string' || !/^[A-Za-z0-9]{2,5}$/.test(req.body.codigo_prefijo.trim())) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'El código prefijo debe tener entre 2 y 5 caracteres alfanuméricos.' });
+      }
+      const nuevoPrefijo = req.body.codigo_prefijo.trim().toUpperCase();
+      const [[prefijoDup]] = await conn.execute(
+        'SELECT id FROM servicios WHERE UPPER(codigo_prefijo) = ? AND id != ? LIMIT 1 FOR UPDATE',
+        [nuevoPrefijo, servicioId]
+      );
+      if (prefijoDup) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'El código prefijo ya está en uso por otro servicio.' });
+      }
+      updates.push('codigo_prefijo = ?');
+      params.push(nuevoPrefijo);
+    }
+
+    // Validar modalidad
+    if (req.body.modalidad !== undefined) {
+      if (!MODALIDADES_SERVICIOS_VALIDAS.has(req.body.modalidad)) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'La modalidad debe ser "turno", "cita" o "turno_y_cita".' });
+      }
+      updates.push('modalidad = ?');
+      params.push(req.body.modalidad);
+    }
+
+    // Validar duracion_estimada_min
+    if (req.body.duracion_estimada_min !== undefined) {
+      const dur = Number(req.body.duracion_estimada_min);
+      if (!Number.isInteger(dur) || dur < 5 || dur > 480) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'La duración estimada debe ser un número entero entre 5 y 480 minutos.' });
+      }
+      updates.push('duracion_estimada_min = ?');
+      params.push(dur);
+    }
+
+    // Validar requiere_tema
+    if (req.body.requiere_tema !== undefined) {
+      if (typeof req.body.requiere_tema !== 'boolean') {
+        await conn.rollback();
+        return res.status(400).json({ error: 'El campo "requiere_tema" debe ser un booleano (true o false).' });
+      }
+      updates.push('requiere_tema = ?');
+      params.push(req.body.requiere_tema);
+    }
+
+    // Validar descripcion
+    if (req.body.descripcion !== undefined) {
+      let desc = req.body.descripcion;
+      if (desc !== null) {
+        if (typeof desc !== 'string') {
+          await conn.rollback();
+          return res.status(400).json({ error: 'La descripción debe ser una cadena de texto o null.' });
+        }
+        if (desc.trim().length > 255) {
+          await conn.rollback();
+          return res.status(400).json({ error: 'La descripción no puede exceder los 255 caracteres.' });
+        }
+        desc = desc.trim() || null;
+      }
+      updates.push('descripcion = ?');
+      params.push(desc);
+    }
+
+    if (updates.length === 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'No se enviaron modificaciones válidas.' });
+    }
+
+    params.push(servicioId);
+    await conn.execute(
+      `UPDATE servicios SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+
+    const [[servicioActualizado]] = await conn.execute(
+      'SELECT id, nombre, codigo_prefijo, modalidad, duracion_estimada_min, requiere_tema, descripcion, activo FROM servicios WHERE id = ?',
+      [servicioId]
+    );
+
+    await conn.commit();
+
+    res.json({
+      ...servicioActualizado,
+      requiere_tema: Boolean(servicioActualizado.requiere_tema),
+      activo: Boolean(servicioActualizado.activo),
+      mensaje: 'Servicio actualizado exitosamente.'
+    });
+  } catch (err) {
+    await conn.rollback();
+    if (err.code === 'ER_DUP_ENTRY' || err.errno === 1062) {
+      const msg = err.message || '';
+      if (msg.includes('nombre')) {
+        return res.status(400).json({ error: 'Ya existe otro servicio con ese nombre.' });
+      }
+      if (msg.includes('codigo_prefijo')) {
+        return res.status(400).json({ error: 'El código prefijo ya está en uso por otro servicio.' });
+      }
+      return res.status(400).json({ error: 'Conflicto de duplicidad con datos existentes.' });
+    }
+    console.error('Error al actualizar servicio:', err);
+    res.status(500).json({ error: 'Error interno al actualizar el servicio.' });
+  } finally {
+    conn.release();
+  }
+});
+
+// 4. Activar o desactivar un servicio (PATCH /api/admin/servicios/:id/estado)
+app.patch('/api/admin/servicios/:id/estado', autenticar, soloAdmin, async (req, res) => {
+  const servicioId = Number(req.params.id);
+  if (!Number.isInteger(servicioId) || servicioId <= 0) {
+    return res.status(400).json({ error: 'Identificador de servicio no válido.' });
+  }
+
+  const claves = Object.keys(req.body);
+  if (claves.length !== 1 || typeof req.body.activo !== 'boolean') {
+    return res.status(400).json({ error: 'El cuerpo de la solicitud solo debe contener el campo booleano "activo".' });
+  }
+
+  const { activo } = req.body;
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [[servicio]] = await conn.execute(
+      'SELECT id, nombre, activo FROM servicios WHERE id = ? FOR UPDATE',
+      [servicioId]
+    );
+    if (!servicio) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Servicio no encontrado.' });
+    }
+
+    // Actualizar estado sin tocar ni alterar turnos históricos asociados
+    await conn.execute(
+      'UPDATE servicios SET activo = ? WHERE id = ?',
+      [activo ? 1 : 0, servicioId]
+    );
+
+    await conn.commit();
+
+    res.json({
+      ok: true,
+      id: servicioId,
+      activo,
+      mensaje: activo
+        ? `Servicio "${servicio.nombre}" activado exitosamente.`
+        : `Servicio "${servicio.nombre}" desactivado. No estará disponible para nuevos turnos y conserva su historial intacto.`
+    });
+  } catch (err) {
+    await conn.rollback();
+    console.error('Error al cambiar estado del servicio:', err);
+    res.status(500).json({ error: 'Error interno al modificar el estado del servicio.' });
+  } finally {
+    conn.release();
+  }
 });
 
 // -------------------------------------------------------------
