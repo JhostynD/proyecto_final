@@ -12,5 +12,8 @@
   },
   "devDependencies": {
     "concurrently": "^10.0.5"
+  },
+  "dependencies": {
+    "helmet": "^8.3.0"
   }
 }

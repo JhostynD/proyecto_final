@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import { api } from "../lib/api";
+import { formatearFechaVisual, formatearHora12 } from "../lib/tiempo";
 import "../styles/ConsultarTurnos.css";
 
 const LABEL_ESTADO = {
@@ -79,13 +80,13 @@ function TarjetaActiva({ turno, destacadoId, checkinEnCurso, onCheckin, onCancel
         {turno.fecha && (
           <span className="meta-chip">
             <IcoCalendario />
-            {turno.fecha}
+            {formatearFechaVisual(turno.fecha)}
           </span>
         )}
         {turno.hora && (
           <span className="meta-chip">
             <IcoReloj />
-            {turno.hora}
+            {formatearHora12(turno.hora)}
           </span>
         )}
         {turno.modulo && (
@@ -186,8 +187,8 @@ function FilaAnterior({ turno }) {
         <div className="historial-row-info">
           <span className="historial-service">{turno.servicio}</span>
           <div className="historial-meta">
-            {turno.fecha && <span><IcoCalendario /> {turno.fecha}</span>}
-            {turno.hora && <span><IcoReloj /> {turno.hora}</span>}
+            {turno.fecha && <span><IcoCalendario /> {formatearFechaVisual(turno.fecha)}</span>}
+            {turno.hora && <span><IcoReloj /> {formatearHora12(turno.hora)}</span>}
             <span className={`modalidad-tag sm ${turno.modalidad}`}>
               {LABEL_MODALIDAD[turno.modalidad] || turno.modalidad}
             </span>
@@ -311,7 +312,7 @@ function ConsultarTurnos() {
                 <p className="banner-details">
                   {infoRecienCreado.modalidad === "turno"
                     ? <>Turno virtual <strong>{infoRecienCreado.servicio}</strong> generado. Ya estás en la fila activa.</>
-                    : <>Cita <strong>{infoRecienCreado.servicio}</strong> el <strong>{infoRecienCreado.fecha}</strong> a las <strong>{infoRecienCreado.hora}</strong>.</>
+                    : <>Cita <strong>{infoRecienCreado.servicio}</strong> el <strong>{formatearFechaVisual(infoRecienCreado.fecha)}</strong> a las <strong>{formatearHora12(infoRecienCreado.hora)}</strong>.</>
                   }
                 </p>
               </div>
@@ -460,7 +461,7 @@ function ConsultarTurnos() {
                   <strong>{turnoACancelar.codigo_turno || `#${turnoACancelar.id}`}</strong> para{" "}
                   <strong>{turnoACancelar.servicio}</strong>
                   {turnoACancelar.modalidad === "cita" && turnoACancelar.fecha
-                    ? ` el ${turnoACancelar.fecha} a las ${turnoACancelar.hora}.`
+                    ? ` el ${formatearFechaVisual(turnoACancelar.fecha)} a las ${formatearHora12(turnoACancelar.hora)}.`
                     : "."
                   }
                 </p>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Footer from "../components/Footer";
 import AdminSidebar from "../components/AdminSidebar";
 import { api } from "../lib/api";
+import { formatearFechaVisual, formatearHora12, formatearFechaHora } from "../lib/tiempo";
 import "../styles/GestionTurnos.css";
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -372,7 +373,7 @@ function ColaSeccion({ titulo, turnos, accionEnCurso, onAccion, acciones, compac
                 <circle cx="12" cy="12" r="10" />
                 <polyline points="12 6 12 12 16 14" />
               </svg>
-              {t.hora}
+              {formatearHora12(t.hora)}
               {t.modulo && (
                 <>
                   <span className="dot-sep" aria-hidden="true">·</span>
@@ -517,7 +518,7 @@ function Historial() {
                           : <span style={{ color: "var(--text-tertiary)" }}>—</span>}
                       </td>
                       <td>
-                        {turno.fecha} <span className="time-subtle">({turno.hora})</span>
+                        {formatearFechaVisual(turno.fecha)} <span className="time-subtle">({formatearHora12(turno.hora)})</span>
                       </td>
                       <td>
                         {turno.duracion_estimada_min
@@ -579,7 +580,7 @@ function Historial() {
                       <span className="motivo-lbl">Tema:</span> {turno.motivo}
                     </div>
                   )}
-                  <div className="admin-card-schedule">{turno.fecha} a las {turno.hora}{turno.duracion_estimada_min ? ` · ~${turno.duracion_estimada_min} min` : ""}</div>
+                  <div className="admin-card-schedule">{formatearFechaHora(turno.fecha, turno.hora)}{turno.duracion_estimada_min ? ` · ~${turno.duracion_estimada_min} min` : ""}</div>
                   {turno.modulo && <div className="admin-card-schedule">{turno.modulo}</div>}
                   <div className="admin-mobile-actions">
                     {turno.estado === "pendiente" && (

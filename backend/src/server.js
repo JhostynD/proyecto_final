@@ -1,9 +1,24 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import bcrypt from 'bcryptjs';
 import 'dotenv/config';
 import { db } from './db.js';
-import { autenticar, crearToken, soloAdmin, limitarIntentos, resetearLimitador, revocarToken } from './auth.js';
+import {
+  autenticar,
+  crearToken,
+  soloAdmin,
+  limitarIntentos,
+  resetearLimitador,
+  revocarToken,
+  limitarConsultaPublica,
+  limitarReenvioVerificacion,
+  limitarRecuperacionContrasena,
+  generarTokenVerificacion,
+  generarTokenRecuperacion,
+  hashearToken
+} from './auth.js';
+import { enviarCorreoTransaccional, enmascararCorreo } from './email.js';
 import { esFestivoColombia, esDiaHabil, JORNADA_INICIO_MIN, JORNADA_FIN_MIN } from './festivos_colombia.js';
 import { agregarClienteSSE, cerrarClientesSSE, registrarNotificacionEstado } from './notificaciones.js';
 
@@ -11,23 +26,13 @@ const app = express();
 const puerto = Number(process.env.PORT || 3000);
 
 // -------------------------------------------------------------
-// CABECERAS DE SEGURIDAD HTTP (equivalente manual a Helmet)
+// CABECERAS DE SEGURIDAD HTTP CON HELMET
 // -------------------------------------------------------------
-app.use((_req, res, next) => {
-  // Previene que el browser infiera el tipo MIME
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  // Deshabilita el renderizado en iframes de otros dominios
-  res.setHeader('X-Frame-Options', 'DENY');
-  // Elimina la cabecera que revela el framework
-  res.removeHeader('X-Powered-By');
-  // Política de referrer conservadora
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  // Política de permisos mínima
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  // CSP básica para respuestas JSON de API
-  res.setHeader('Content-Security-Policy', "default-src 'none'");
-  next();
-});
+app.use(helmet({
+  contentSecurityPolicy: false,
+  hsts: process.env.NODE_ENV === 'production' ? undefined : false,
+  crossOriginEmbedderPolicy: false
+}));
 
 // -------------------------------------------------------------
 // CORS — solo permite orígenes explícitamente configurados
@@ -372,6 +377,76 @@ app.get('/api/salud', async (_req, res) => {
   });
 });
 
+// ── Plantillas de correo de verificación ──────────────────────
+function construirTextoVerificacion(nombre, enlace) {
+  return `Hola, ${nombre}:\n\n` +
+    'Gracias por registrarte en FILA CERO. Para activar tu cuenta y comenzar a utilizar nuestros servicios, por favor confirma tu dirección de correo electrónico accediendo al siguiente enlace:\n\n' +
+    `${enlace}\n\n` +
+    'Este enlace es válido durante 24 horas y solo puede ser utilizado una vez.\n\n' +
+    'Si tú no creaste una cuenta en FILA CERO, puedes ignorar este mensaje con total seguridad.\n\n' +
+    'Atentamente,\nEl equipo de FILA CERO';
+}
+
+function construirHtmlVerificacion(nombre, enlace) {
+  const nombreSeguro = String(nombre || 'Usuario')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+  return `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1e293b; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="color: #0f172a; font-size: 24px; margin: 0;">FILA CERO</h1>
+      <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Sistema de Gestión y Turnos</p>
+    </div>
+    <h2 style="color: #0f172a; font-size: 18px; margin-top: 0;">¡Hola, ${nombreSeguro}!</h2>
+    <p style="font-size: 15px; line-height: 1.6; color: #334155;">Gracias por registrarte en FILA CERO. Para activar tu cuenta y poder agendar y gestionar tus turnos bancarios, por favor verifica tu correo electrónico haciendo clic en el siguiente botón:</p>
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="${enlace}" style="background-color: #2563eb; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block; font-size: 15px;">Verificar mi cuenta</a>
+    </div>
+    <p style="font-size: 13px; line-height: 1.5; color: #64748b;">Si el botón no funciona en tu cliente de correo, copia y pega la siguiente dirección en tu navegador web:</p>
+    <p style="font-size: 12px; color: #2563eb; word-break: break-all; background-color: #f1f5f9; padding: 8px 12px; border-radius: 4px;">${enlace}</p>
+    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 28px 0 16px 0;" />
+    <p style="font-size: 12px; line-height: 1.5; color: #94a3b8; margin: 0;">Este enlace de verificación es de un solo uso y vencerá en 24 horas. Si no has solicitado esta cuenta, puedes desestimar este mensaje de forma segura.</p>
+  </div>`;
+}
+
+// ── Plantillas de correo de recuperación de contraseña ───────
+function construirTextoRecuperacion(nombre, enlace) {
+  return `Hola, ${nombre}:\n\n` +
+    'Hemos recibido una solicitud para restablecer la contraseña de tu cuenta en FILA CERO.\n\n' +
+    'Para definir una nueva contraseña, por favor ingresa al siguiente enlace:\n\n' +
+    `${enlace}\n\n` +
+    'Este enlace de recuperación es de un solo uso y expirará en 30 minutos.\n\n' +
+    'Si tú no solicitaste este cambio, puedes ignorar este mensaje con total tranquilidad; tu contraseña actual continuará siendo segura.\n\n' +
+    'Atentamente,\nEl equipo de FILA CERO';
+}
+
+function construirHtmlRecuperacion(nombre, enlace) {
+  const nombreSeguro = String(nombre || 'Usuario')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+  return `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1e293b; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="color: #0f172a; font-size: 24px; margin: 0;">FILA CERO</h1>
+      <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Sistema de Gestión y Turnos</p>
+    </div>
+    <h2 style="color: #0f172a; font-size: 18px; margin-top: 0;">Recuperación de Contraseña</h2>
+    <p style="font-size: 15px; line-height: 1.6; color: #334155;">Hola, <strong>${nombreSeguro}</strong>: Recibimos una solicitud para restablecer la contraseña de acceso a tu cuenta en FILA CERO.</p>
+    <p style="font-size: 15px; line-height: 1.6; color: #334155;">Para crear una nueva contraseña, haz clic en el siguiente botón:</p>
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="${enlace}" style="background-color: #2563eb; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block; font-size: 15px;">Restablecer mi contraseña</a>
+    </div>
+    <p style="font-size: 13px; line-height: 1.5; color: #64748b;">Si el botón no funciona, copia y pega la siguiente dirección en tu navegador:</p>
+    <p style="font-size: 12px; color: #2563eb; word-break: break-all; background-color: #f1f5f9; padding: 8px 12px; border-radius: 4px;">${enlace}</p>
+    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 28px 0 16px 0;" />
+    <p style="font-size: 12px; line-height: 1.5; color: #94a3b8; margin: 0;">Este enlace es válido durante 30 minutos y solo puede utilizarse una vez. Si no solicitaste restablecer tu contraseña, puedes desestimar este correo; tu cuenta permanece protegida.</p>
+  </div>`;
+}
+
 // ── Autenticación ─────────────────────────────────────────────
 app.post('/api/auth/registro', limitarIntentos, async (req, res) => {
   const nombre = req.body.nombre?.trim();
@@ -380,37 +455,662 @@ app.post('/api/auth/registro', limitarIntentos, async (req, res) => {
   if (!nombre || !correo || !contraseña || contraseña.length < 6) {
     return res.status(400).json({ error: 'Nombre, correo y contraseña de mínimo 6 caracteres son obligatorios.' });
   }
+
+  // Validación de longitud y estructura básica de correo
+  if (correo.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+    return res.status(400).json({ error: 'El formato del correo electrónico no es válido.' });
+  }
+
+  const conn = await db.getConnection();
+  let insertId = null;
+  let tokenPlanoGenerado = null;
+
   try {
+    await conn.beginTransaction();
+
     const hash = await bcrypt.hash(contraseña, 10);
-    const [result] = await db.execute('INSERT INTO usuarios (nombre, correo, contraseña) VALUES (?, ?, ?)', [nombre, correo, hash]);
-    const usuario = { id: result.insertId, nombre, rol: 'usuario' };
-    res.status(201).json({ token: crearToken(usuario), usuario });
+
+    // 1. Insertar usuario con correo_verificado = 0
+    // Si la columna no existe (migración pendiente), arrojará ER_BAD_FIELD_ERROR
+    // y se manejará con rollback + HTTP 503 controlado sin crear cuentas incompletas.
+    const [result] = await conn.execute(
+      'INSERT INTO usuarios (nombre, correo, contraseña, correo_verificado) VALUES (?, ?, ?, 0)',
+      [nombre, correo, hash]
+    );
+    insertId = result.insertId;
+
+    // 2. Generar token criptográficamente seguro y preparar hash SHA-256
+    const { tokenPlano, tokenHash } = generarTokenVerificacion();
+    tokenPlanoGenerado = tokenPlano;
+    const expiraEn = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas de vigencia
+
+    // Invalidar cualquier token anterior que pudiera existir para este ID
+    await conn.execute(
+      'UPDATE tokens_verificacion SET usado = 1 WHERE usuario_id = ? AND usado = 0',
+      [insertId]
+    );
+
+    // Almacenar únicamente el hash del token en la base de datos (nunca el plano)
+    await conn.execute(
+      'INSERT INTO tokens_verificacion (usuario_id, token_hash, expira_en, usado) VALUES (?, ?, ?, 0)',
+      [insertId, tokenHash, expiraEn]
+    );
+
+    // Registrar marca temporal del envío de verificación
+    await conn.execute(
+      'UPDATE usuarios SET verificacion_enviada_en = NOW() WHERE id = ?',
+      [insertId]
+    );
+
+    // Confirmar transacción de creación de cuenta y token de forma atómica
+    await conn.commit();
   } catch (error) {
-    if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Ese correo ya está registrado.' });
-    throw error;
+    await conn.rollback();
+
+    // Correo duplicado
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'Ese correo ya está registrado.' });
+    }
+
+    // Esquema de base de datos incompleto (migración migracion_correo_003.sql pendiente)
+    if (error.code === 'ER_BAD_FIELD_ERROR' || error.code === 'ER_NO_SUCH_TABLE') {
+      console.error('[Error de Configuración] Esquema de base de datos incompleto para registro/verificación. Aplique backend/migracion_correo_003.sql.');
+      return res.status(503).json({
+        error: 'El servicio de registro no se encuentra disponible temporalmente por mantenimiento de base de datos. Por favor intenta más tarde.'
+      });
+    }
+
+    // Otros errores de base de datos
+    console.error('[Error Registro]', error.message);
+    return res.status(500).json({ error: 'Ocurrió un error interno al procesar el registro.' });
+  } finally {
+    conn.release();
+  }
+
+  // 3. Enviar correo de verificación después de confirmar la transacción
+  let correoEnviado = false;
+  if (insertId && tokenPlanoGenerado) {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const enlaceVerificacion = `${frontendUrl.replace(/\/+$/, '')}/verificar-correo?token=${tokenPlanoGenerado}`;
+
+    try {
+      const resEmail = await enviarCorreoTransaccional({
+        destinatario: correo,
+        asunto: 'Verifica tu correo electrónico - FILA CERO',
+        texto: construirTextoVerificacion(nombre, enlaceVerificacion),
+        html: construirHtmlVerificacion(nombre, enlaceVerificacion)
+      });
+      correoEnviado = !!resEmail?.enviado;
+    } catch (errEmail) {
+      console.error('[Error Envio Correo Registro]', errEmail.message);
+    }
+  }
+
+  // Seguridad: NO se entrega token JWT de acceso para cuentas no verificadas
+  return res.status(201).json({
+    ok: true,
+    mensaje: correoEnviado
+      ? 'Cuenta creada exitosamente. Hemos enviado un correo de verificación a tu dirección.'
+      : 'Cuenta creada. No fue posible enviar el correo de verificación en este momento. Podrás solicitar un reenvío más tarde.',
+    correo: enmascararCorreo(correo),
+    correoEnviado
+  });
+});
+
+// Endpoint de verificación de correo electrónico
+app.get('/api/auth/verificar-correo', async (req, res) => {
+  const tokenPlano = req.query.token;
+
+  if (!tokenPlano || typeof tokenPlano !== 'string' || !tokenPlano.trim()) {
+    return res.status(400).json({ error: 'El token de verificación es obligatorio.' });
+  }
+
+  const tokenLimpio = tokenPlano.trim();
+  // Validación estricta de formato: 64 caracteres hexadecimales
+  if (!/^[a-f0-9]{64}$/i.test(tokenLimpio)) {
+    return res.status(400).json({ error: 'El enlace de verificación no es válido o está incompleto.' });
+  }
+
+  const tokenHash = hashearToken(tokenLimpio);
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // Buscar el registro del token bloqueando la fila para evitar condiciones de carrera (reutilización simultánea)
+    const [filas] = await conn.execute(
+      `SELECT tv.id, tv.usuario_id, tv.expira_en, tv.usado, u.correo_verificado
+       FROM tokens_verificacion tv
+       JOIN usuarios u ON u.id = tv.usuario_id
+       WHERE tv.token_hash = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [tokenHash]
+    );
+
+    const registro = filas[0];
+
+    // 1. Token inexistente
+    if (!registro) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'El enlace de verificación no es válido o no existe.' });
+    }
+
+    // 2. Token ya utilizado (prevención de reutilización)
+    if (registro.usado === 1 || registro.usado === true) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Este enlace de verificación ya fue utilizado. Por favor solicita uno nuevo.' });
+    }
+
+    // 3. Token vencido
+    const ahora = new Date();
+    const fechaExpira = new Date(registro.expira_en);
+    if (fechaExpira <= ahora) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'El enlace de verificación ha expirado. Por favor solicita un nuevo correo de verificación.' });
+    }
+
+    // 4. Actualizar estado de verificación y marcar token como consumido
+    await conn.execute(
+      'UPDATE usuarios SET correo_verificado = 1 WHERE id = ?',
+      [registro.usuario_id]
+    );
+
+    await conn.execute(
+      'UPDATE tokens_verificacion SET usado = 1 WHERE id = ?',
+      [registro.id]
+    );
+
+    // Invalidar cualquier otro token pendiente para este usuario
+    await conn.execute(
+      'UPDATE tokens_verificacion SET usado = 1 WHERE usuario_id = ? AND usado = 0',
+      [registro.usuario_id]
+    );
+
+    await conn.commit();
+
+    return res.json({
+      ok: true,
+      mensaje: 'Correo electrónico verificado exitosamente. Ya puedes iniciar sesión con tu cuenta.'
+    });
+  } catch (err) {
+    await conn.rollback();
+    if (err.code === 'ER_NO_SUCH_TABLE' || err.code === 'ER_BAD_FIELD_ERROR') {
+      console.error('[Error de Configuración] Esquema incompleto en verificación. Aplique backend/migracion_correo_003.sql.');
+      return res.status(503).json({
+        error: 'El servicio de verificación no se encuentra disponible temporalmente. Por favor intenta más tarde.'
+      });
+    }
+    console.error('[Error Verificación]', err.message);
+    return res.status(500).json({ error: 'Ocurrió un error al procesar la verificación.' });
+  } finally {
+    conn.release();
+  }
+});
+
+// Endpoint de reenvío de correo de verificación
+app.post('/api/auth/reenviar-verificacion', limitarReenvioVerificacion, async (req, res) => {
+  const correoRaw = req.body?.correo || req.body?.email || '';
+  const correo = typeof correoRaw === 'string' ? correoRaw.trim().toLowerCase() : '';
+
+  // Mensaje genérico para evitar enumeración de cuentas registradas
+  const MENSAJE_GENERICO = 'Si el correo electrónico está registrado y pendiente de verificación, recibirás un nuevo enlace en unos momentos.';
+
+  if (!correo || correo.length > 254) {
+    return res.json({ ok: true, mensaje: MENSAJE_GENERICO });
+  }
+
+  try {
+    let usuario;
+    try {
+      const [filas] = await db.execute(
+        'SELECT id, nombre, correo, correo_verificado, verificacion_enviada_en, activo FROM usuarios WHERE correo = ? LIMIT 1',
+        [correo]
+      );
+      usuario = filas[0];
+    } catch (err) {
+      if (err.code === 'ER_BAD_FIELD_ERROR' || err.code === 'ER_NO_SUCH_TABLE') {
+        console.error('[Error de Configuración] Esquema incompleto en reenvío de verificación. Aplique backend/migracion_correo_003.sql.');
+        return res.status(503).json({
+          error: 'El servicio de verificación no se encuentra disponible temporalmente. Por favor intenta más tarde.'
+        });
+      }
+      throw err;
+    }
+
+    // Si el usuario no existe, o ya está verificado, o está inactivo, responder genéricamente sin filtrar información
+    if (!usuario || usuario.correo_verificado === 1 || usuario.correo_verificado === true) {
+      return res.json({ ok: true, mensaje: MENSAJE_GENERICO });
+    }
+
+    // Cooldown anti-spam en base de datos: al menos 2 minutos entre reenvíos
+    if (usuario.verificacion_enviada_en) {
+      const ultimoEnvio = new Date(usuario.verificacion_enviada_en).getTime();
+      const COOLDOWN_MS = 2 * 60 * 1000; // 2 minutos
+      if (Date.now() - ultimoEnvio < COOLDOWN_MS) {
+        // Enfriamiento activo: responder mensaje genérico sin disparar nuevo correo
+        return res.json({ ok: true, mensaje: MENSAJE_GENERICO });
+      }
+    }
+
+    const conn = await db.getConnection();
+    let tokenPlanoGenerado = null;
+
+    try {
+      await conn.beginTransaction();
+
+      // Invalidar tokens previos
+      await conn.execute(
+        'UPDATE tokens_verificacion SET usado = 1 WHERE usuario_id = ? AND usado = 0',
+        [usuario.id]
+      );
+
+      // Generar nuevo token seguro y almacenar solo el hash
+      const { tokenPlano, tokenHash } = generarTokenVerificacion();
+      tokenPlanoGenerado = tokenPlano;
+      const expiraEn = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+      await conn.execute(
+        'INSERT INTO tokens_verificacion (usuario_id, token_hash, expira_en, usado) VALUES (?, ?, ?, 0)',
+        [usuario.id, tokenHash, expiraEn]
+      );
+
+      await conn.execute(
+        'UPDATE usuarios SET verificacion_enviada_en = NOW() WHERE id = ?',
+        [usuario.id]
+      );
+
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      if (err.code === 'ER_BAD_FIELD_ERROR' || err.code === 'ER_NO_SUCH_TABLE') {
+        console.error('[Error de Configuración] Esquema incompleto en transacción de reenvío. Aplique backend/migracion_correo_003.sql.');
+        return res.status(503).json({
+          error: 'El servicio de verificación no se encuentra disponible temporalmente. Por favor intenta más tarde.'
+        });
+      }
+      console.error('[Error Reenvio]', err.message);
+      return res.status(500).json({ error: 'Error interno del servidor al procesar el reenvío.' });
+    } finally {
+      conn.release();
+    }
+
+    // Despacho del correo después del commit
+    if (tokenPlanoGenerado) {
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const enlaceVerificacion = `${frontendUrl.replace(/\/+$/, '')}/verificar-correo?token=${tokenPlanoGenerado}`;
+
+      try {
+        await enviarCorreoTransaccional({
+          destinatario: usuario.correo,
+          asunto: 'Verifica tu correo electrónico - FILA CERO',
+          texto: construirTextoVerificacion(usuario.nombre, enlaceVerificacion),
+          html: construirHtmlVerificacion(usuario.nombre, enlaceVerificacion)
+        });
+      } catch (errEmail) {
+        console.error('[Error Envio Correo Reenvio]', errEmail.message);
+      }
+    }
+
+    return res.json({ ok: true, mensaje: MENSAJE_GENERICO });
+  } catch (error) {
+    console.error('[Error Reenvio]', error);
+    return res.json({ ok: true, mensaje: MENSAJE_GENERICO });
+  }
+});
+
+// =============================================================
+// FLUJO DE RECUPERACIÓN DE CONTRASEÑA
+// =============================================================
+
+// Endpoint para solicitar correo de recuperación
+app.post('/api/auth/olvide-contrasena', limitarRecuperacionContrasena, async (req, res) => {
+  const correoRaw = req.body?.correo || req.body?.email || '';
+  const correo = typeof correoRaw === 'string' ? correoRaw.trim().toLowerCase() : '';
+
+  // Respuesta pública genérica e invariable para prevenir enumeración de usuarios
+  const MENSAJE_GENERICO = 'Si la cuenta existe y el servicio de correo está disponible, recibirás instrucciones para restablecer tu contraseña.';
+
+  // Validación básica sintáctica
+  if (!correo || correo.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+    return res.json({ ok: true, mensaje: MENSAJE_GENERICO });
+  }
+
+  // Si el servicio de correo no está habilitado, omitimos de inmediato sin bloquear ni crear tokens
+  if (process.env.EMAIL_ENABLED !== 'true') {
+    const destinoEnmascarado = enmascararCorreo(correo);
+    console.log(`[Auth] Solicitud de recuperación procesada para ${destinoEnmascarado} (envío omitido por EMAIL_ENABLED!=true)`);
+    return res.json({ ok: true, mensaje: MENSAJE_GENERICO });
+  }
+
+  const conn = await db.getConnection();
+  let usuario = null;
+  let nuevoTokenId = null;
+  let tokenPlanoGenerado = null;
+
+  try {
+    await conn.beginTransaction();
+
+    // 1. Bloqueo exclusivo de fila sobre el usuario (SELECT ... FOR UPDATE)
+    // Garantiza serialización estricta por usuario impidiendo que solicitudes simultáneas superen el cooldown
+    let filasUsuario;
+    try {
+      const [resFilas] = await conn.execute(
+        'SELECT id, nombre, correo, activo FROM usuarios WHERE correo = ? LIMIT 1 FOR UPDATE',
+        [correo]
+      );
+      filasUsuario = resFilas;
+    } catch (err) {
+      if (err.code === 'ER_BAD_FIELD_ERROR' || err.code === 'ER_NO_SUCH_TABLE') {
+        console.error('[Error de Configuración] Esquema incompleto en recuperación. Aplique backend/migracion_correo_003.sql.');
+        await conn.rollback();
+        return res.status(503).json({
+          error: 'El servicio de recuperación no se encuentra disponible temporalmente. Por favor intenta más tarde.'
+        });
+      }
+      throw err;
+    }
+
+    usuario = filasUsuario[0];
+
+    // Si el usuario no existe o está inactivo, confirmamos transacción y respondemos genéricamente
+    if (!usuario || usuario.activo === 0 || usuario.activo === false) {
+      await conn.commit();
+      return res.json({ ok: true, mensaje: MENSAJE_GENERICO });
+    }
+
+    // 2. Comprobar Cooldown anti-spam de 2 minutos protegido por el bloqueo del usuario
+    try {
+      const [tokensRecientes] = await conn.execute(
+        `SELECT id, creado_en FROM tokens_recuperacion
+         WHERE usuario_id = ? AND creado_en > NOW() - INTERVAL 2 MINUTE
+         LIMIT 1`,
+        [usuario.id]
+      );
+      if (tokensRecientes && tokensRecientes.length > 0) {
+        // Enfriamiento activo: responder genéricamente sin crear token ni alterar anteriores
+        await conn.commit();
+        return res.json({ ok: true, mensaje: MENSAJE_GENERICO });
+      }
+    } catch (err) {
+      if (err.code === 'ER_NO_SUCH_TABLE') {
+        console.error('[Error de Configuración] Falta tabla tokens_recuperacion. Aplique backend/migracion_correo_003.sql.');
+        await conn.rollback();
+        return res.status(503).json({
+          error: 'El servicio de recuperación no se encuentra disponible temporalmente. Por favor intenta más tarde.'
+        });
+      }
+      throw err;
+    }
+
+    // 3. Generar token criptográficamente seguro (32 bytes / 64 hex)
+    const { tokenPlano, tokenHash } = generarTokenRecuperacion();
+    tokenPlanoGenerado = tokenPlano;
+    const expiraEn = new Date(Date.now() + 30 * 60 * 1000); // 30 minutos de vigencia
+
+    // 4. Insertar nuevo token en la BD SIN invalidar todavía los anteriores
+    const [resInsert] = await conn.execute(
+      'INSERT INTO tokens_recuperacion (usuario_id, token_hash, expira_en, usado) VALUES (?, ?, ?, 0)',
+      [usuario.id, tokenHash, expiraEn]
+    );
+    nuevoTokenId = resInsert.insertId;
+
+    // 5. Confirmar transacción y liberar el bloqueo de la fila ANTES de cualquier llamada de red SMTP
+    await conn.commit();
+  } catch (error) {
+    await conn.rollback();
+    console.error('[Error Recuperacion Transaccion Inicial]', error.message);
+    return res.json({ ok: true, mensaje: MENSAJE_GENERICO });
+  } finally {
+    conn.release();
+  }
+
+  // Si no se generó token (usuario inexistente, inactivo o en cooldown), la respuesta ya fue devuelta arriba.
+  if (!nuevoTokenId || !tokenPlanoGenerado || !usuario) {
+    return res.json({ ok: true, mensaje: MENSAJE_GENERICO });
+  }
+
+  // 6. Despacho del correo electrónico fuera de cualquier transacción de base de datos
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const enlaceRecuperacion = `${frontendUrl.replace(/\/+$/, '')}/restablecer-contrasena?token=${tokenPlanoGenerado}`;
+
+  let correoExitoso = false;
+  try {
+    const resEmail = await enviarCorreoTransaccional({
+      destinatario: usuario.correo,
+      asunto: 'Restablecer contraseña - FILA CERO',
+      texto: construirTextoRecuperacion(usuario.nombre, enlaceRecuperacion),
+      html: construirHtmlRecuperacion(usuario.nombre, enlaceRecuperacion)
+    });
+    correoExitoso = resEmail?.enviado === true;
+  } catch (errEmail) {
+    console.error('[Error Envio Correo Recuperacion]', errEmail.message);
+    correoExitoso = false;
+  }
+
+  // 7. Manejo de estado posterior al envío de correo:
+  if (correoExitoso) {
+    // Envío exitoso confirmado (enviado === true):
+    // Invalidar únicamente tokens más antiguos que el recién enviado (id < nuevoTokenId)
+    // Esto previene invalidaciones cruzadas si dos envíos se solapan en tiempo
+    const connInv = await db.getConnection();
+    try {
+      await connInv.beginTransaction();
+      await connInv.execute(
+        'UPDATE tokens_recuperacion SET usado = 1 WHERE usuario_id = ? AND id < ? AND usado = 0',
+        [usuario.id, nuevoTokenId]
+      );
+      await connInv.commit();
+    } catch (errInv) {
+      await connInv.rollback();
+      // Si falla la invalidación de anteriores, registrar incidente internamente sin inutilizar el nuevo token
+      console.error('[Alerta Recuperacion] Falló la invalidación de tokens anteriores para usuario', usuario.id, errInv.message);
+    } finally {
+      connInv.release();
+    }
+  } else {
+    // Envío falló (enviado !== true):
+    // Operación compensatoria: marcar únicamente el token nuevo no enviado como usado
+    // preservando intactos los tokens anteriores funcionales
+    const connComp = await db.getConnection();
+    try {
+      await connComp.beginTransaction();
+      await connComp.execute(
+        'UPDATE tokens_recuperacion SET usado = 1 WHERE id = ?',
+        [nuevoTokenId]
+      );
+      await connComp.commit();
+    } catch (errComp) {
+      await connComp.rollback();
+      // Registro seguro sin revelar tokens, enlaces ni PII
+      console.error('[Alerta Recuperacion] Falló la operación compensatoria para token ID:', nuevoTokenId, errComp.message);
+    } finally {
+      connComp.release();
+    }
+  }
+
+  return res.json({ ok: true, mensaje: MENSAJE_GENERICO });
+});
+
+// Endpoint para restablecer la contraseña con un token
+app.post('/api/auth/restablecer-contrasena', async (req, res) => {
+  const tokenPlano = req.body?.token;
+  const contrasena = req.body?.contrasena || req.body?.contraseña;
+
+  if (!tokenPlano || typeof tokenPlano !== 'string' || !tokenPlano.trim()) {
+    return res.status(400).json({ error: 'El enlace de recuperación es inválido, ha expirado o ya fue utilizado.' });
+  }
+
+  const tokenLimpio = tokenPlano.trim();
+  // Validación de formato: 64 caracteres hexadecimales
+  if (!/^[a-f0-9]{64}$/i.test(tokenLimpio)) {
+    return res.status(400).json({ error: 'El enlace de recuperación es inválido, ha expirado o ya fue utilizado.' });
+  }
+
+  if (!contrasena || typeof contrasena !== 'string' || contrasena.length < 6) {
+    return res.status(400).json({ error: 'La nueva contraseña debe tener como mínimo 6 caracteres.' });
+  }
+
+  const tokenHash = hashearToken(tokenLimpio);
+  const conn = await db.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    // Buscar el token con bloqueo de fila (FOR UPDATE) para prevenir condiciones de carrera (consumo concurrente)
+    let filas;
+    try {
+      const [resFilas] = await conn.execute(
+        `SELECT tr.id, tr.usuario_id, tr.expira_en, tr.usado, u.activo
+         FROM tokens_recuperacion tr
+         JOIN usuarios u ON u.id = tr.usuario_id
+         WHERE tr.token_hash = ?
+         LIMIT 1
+         FOR UPDATE`,
+        [tokenHash]
+      );
+      filas = resFilas;
+    } catch (err) {
+      if (err.code === 'ER_NO_SUCH_TABLE' || err.code === 'ER_BAD_FIELD_ERROR') {
+        console.error('[Error de Configuración] Esquema incompleto en restablecimiento. Aplique backend/migracion_correo_003.sql.');
+        await conn.rollback();
+        return res.status(503).json({
+          error: 'El servicio de recuperación no se encuentra disponible temporalmente. Por favor intenta más tarde.'
+        });
+      }
+      throw err;
+    }
+
+    const registro = filas[0];
+
+    // 1. Token inexistente
+    if (!registro) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'El enlace de recuperación es inválido, ha expirado o ya fue utilizado.' });
+    }
+
+    // 2. Token ya utilizado
+    if (registro.usado === 1 || registro.usado === true) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'El enlace de recuperación es inválido, ha expirado o ya fue utilizado.' });
+    }
+
+    // 3. Token vencido
+    const ahora = new Date();
+    const fechaExpira = new Date(registro.expira_en);
+    if (fechaExpira <= ahora) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'El enlace de recuperación es inválido, ha expirado o ya fue utilizado.' });
+    }
+
+    // 4. Cuenta inactiva
+    if (registro.activo === 0 || registro.activo === false) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'La cuenta asociada se encuentra inactiva. Contacta al administrador.' });
+    }
+
+    // 5. Cifrar la nueva contraseña con bcrypt (factor de trabajo 10)
+    const nuevoHash = await bcrypt.hash(contrasena, 10);
+
+    // 6. Actualizar contraseña, incrementar auth_version y registrar contrasena_cambiada_en
+    try {
+      await conn.execute(
+        `UPDATE usuarios
+         SET contraseña = ?,
+             auth_version = COALESCE(auth_version, 1) + 1,
+             contrasena_cambiada_en = NOW()
+         WHERE id = ?`,
+        [nuevoHash, registro.usuario_id]
+      );
+    } catch (errUpdate) {
+      // Si la columna auth_version o contrasena_cambiada_en no existen todavía
+      if (errUpdate.code === 'ER_BAD_FIELD_ERROR') {
+        await conn.execute(
+          'UPDATE usuarios SET contraseña = ? WHERE id = ?',
+          [nuevoHash, registro.usuario_id]
+        );
+      } else {
+        throw errUpdate;
+      }
+    }
+
+    // 7. Marcar token actual como usado
+    await conn.execute(
+      'UPDATE tokens_recuperacion SET usado = 1 WHERE id = ?',
+      [registro.id]
+    );
+
+    // 8. Invalidar cualquier otro token de recuperación pendiente para este usuario
+    await conn.execute(
+      'UPDATE tokens_recuperacion SET usado = 1 WHERE usuario_id = ? AND usado = 0',
+      [registro.usuario_id]
+    );
+
+    // Confirmar todas las modificaciones atómicamente
+    await conn.commit();
+
+    return res.json({
+      ok: true,
+      mensaje: 'Contraseña actualizada exitosamente. Ya puedes iniciar sesión con tu nueva contraseña.'
+    });
+  } catch (error) {
+    await conn.rollback();
+    console.error('[Error Restablecer Contraseña]', error.message);
+    return res.status(500).json({ error: 'Ocurrió un error al procesar el cambio de contraseña.' });
+  } finally {
+    conn.release();
   }
 });
 
 app.post('/api/auth/login', limitarIntentos, async (req, res) => {
   const correo = req.body.correo?.trim().toLowerCase();
   const contraseña = req.body.contraseña || '';
-  // Incluir campo 'activo' para rechazar cuentas deshabilitadas
-  const [[usuario]] = await db.execute(
-    'SELECT id, nombre, correo, contraseña, rol, activo FROM usuarios WHERE correo = ?',
-    [correo]
-  );
+
+  let usuario;
+  try {
+    const [filas] = await db.execute(
+      'SELECT id, nombre, correo, contraseña, rol, activo, correo_verificado, auth_version FROM usuarios WHERE correo = ?',
+      [correo]
+    );
+    usuario = filas[0];
+  } catch (err) {
+    if (err.code === 'ER_BAD_FIELD_ERROR') {
+      const [filas] = await db.execute(
+        'SELECT id, nombre, correo, contraseña, rol, activo, correo_verificado FROM usuarios WHERE correo = ?',
+        [correo]
+      );
+      usuario = filas[0];
+    } else {
+      throw err;
+    }
+  }
+
   // Mensaje genérico: no revelar si el correo existe ni si la cuenta está deshabilitada
   if (!usuario || !(await bcrypt.compare(contraseña, usuario.contraseña))) {
     return res.status(401).json({ error: 'Correo o contraseña incorrectos.' });
   }
-  // Verificar que la cuenta esté habilitada (activo puede ser NULL en esquemas sin la columna aún)
+
+  // Verificar que la cuenta esté habilitada
   if (usuario.activo === 0 || usuario.activo === false) {
     return res.status(401).json({ error: 'Correo o contraseña incorrectos.' });
   }
+
+  // Bloquear inicio de sesión para cuentas no verificadas (HTTP 403)
+  // Los usuarios antiguos (o creados antes de la columna) tienen correo_verificado = 1 o NULL y conservan su acceso
+  if (usuario.correo_verificado === 0 || usuario.correo_verificado === false) {
+    return res.status(403).json({
+      error: 'Debes verificar tu correo electrónico antes de iniciar sesión. Por favor revisa tu bandeja de entrada o solicita un nuevo enlace de verificación.',
+      noVerificado: true
+    });
+  }
+
   // Restablecer contadores legítimos tras autenticación exitosa
   resetearLimitador(correo);
-  const datos = { id: usuario.id, nombre: usuario.nombre, rol: usuario.rol };
-  res.json({ token: crearToken(datos), usuario: datos });
+  const authVersion = typeof usuario.auth_version === 'number' && usuario.auth_version >= 1
+    ? usuario.auth_version
+    : 1;
+  const datos = { id: usuario.id, nombre: usuario.nombre, rol: usuario.rol, auth_version: authVersion };
+  res.json({ token: crearToken(datos), usuario: { id: usuario.id, nombre: usuario.nombre, rol: usuario.rol } });
 });
 
 app.get('/api/auth/perfil', autenticar, async (req, res) => {
@@ -516,6 +1216,68 @@ app.get('/api/servicios', async (_req, res) => {
     ORDER BY id ASC
   `);
   res.json(servicios);
+});
+
+// ── Consulta Pública de Turno por Código ──────────────────────
+// Endpoint público no autenticado para verificar el estado de un turno mediante su código.
+// Protegido con rate limiting específico por IP (máx 15 req/min) y validación estricta.
+// Principio de minimización de datos: no devuelve identificadores internos, datos de usuario,
+// motivos de atención, módulo ni timestamps.
+app.get('/api/turnos/publico/:codigo', limitarConsultaPublica, async (req, res) => {
+  const codigoRaw = req.params.codigo;
+
+  // 1. Validación estricta de tipo, longitud y formato
+  if (!codigoRaw || typeof codigoRaw !== 'string') {
+    return res.status(400).json({ error: 'Debes proporcionar un código de turno.' });
+  }
+
+  const codigo = codigoRaw.trim().toUpperCase();
+
+  // Patrón alfanumérico seguro: prefijo (2-5 chars) + guión + correlativo (1-5 chars), longitud total 4-10.
+  // Solo se acepta guión (-) como separador. Rechaza guión bajo, caracteres especiales e inyecciones.
+  if (codigo.length < 4 || codigo.length > 10 || !/^[A-Z0-9]{2,5}-[A-Z0-9]{1,5}$/.test(codigo)) {
+    return res.status(400).json({ error: 'El formato del código de turno no es válido. Verifica el código impreso en tu comprobante e inténtalo de nuevo.' });
+  }
+
+  try {
+    // 2. Consulta SQL parametrizada
+    // Se utiliza LEFT JOIN con servicios para que el turno siga siendo consultable
+    // incluso si el servicio fue desactivado posteriormente por administración.
+    const [filas] = await db.execute(
+      `SELECT t.codigo_turno,
+              COALESCE(s.nombre, 'Servicio no disponible') AS servicio,
+              t.modalidad,
+              t.fecha,
+              TIME_FORMAT(t.hora, '%H:%i') AS hora,
+              t.estado
+       FROM turnos t
+       LEFT JOIN servicios s ON s.id = t.servicio_id
+       WHERE t.codigo_turno = ?
+       LIMIT 1`,
+      [codigo]
+    );
+
+    const turno = filas[0];
+
+    // 3. Manejo de turno inexistente con mensaje genérico sin fuga de información
+    if (!turno) {
+      return res.status(404).json({ error: 'Turno no encontrado. Verifica el código ingresado.' });
+    }
+
+    // 4. Retorno exclusivo de los campos públicos autorizados
+    res.json({
+      codigo_turno: turno.codigo_turno,
+      servicio: turno.servicio,
+      modalidad: turno.modalidad,
+      fecha: normalizarFecha(turno.fecha),
+      hora: formatearHora(turno.hora),
+      estado: turno.estado
+    });
+  } catch (_err) {
+    // Evitar registrar códigos completos en logs o exponer trazas SQL
+    console.error('Error al procesar consulta pública de turno');
+    res.status(500).json({ error: 'Ocurrió un error al consultar el turno. Por favor intenta más tarde.' });
+  }
 });
 
 // ── Disponibilidad Dinámica con Detección de Horarios Pasados ──

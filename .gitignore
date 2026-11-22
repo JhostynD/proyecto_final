@@ -60,3 +60,7 @@ __pycache__/
 # Asistentes de IA y configuración local
 .agents/
 .gemini/
+
+# Respaldos y volcados SQL con datos reales
+docs/backup_*.sql
+*.backup.sql

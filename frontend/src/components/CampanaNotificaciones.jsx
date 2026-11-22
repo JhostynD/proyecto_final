@@ -7,6 +7,7 @@ import {
   marcarTodasLeidas,
   suscribirNotificacionesSSE
 } from "../lib/notificaciones";
+import { formatearTimestampNotificacion } from "../lib/tiempo";
 import "./CampanaNotificaciones.css";
 
 export default function CampanaNotificaciones() {
@@ -135,17 +136,6 @@ export default function CampanaNotificaciones() {
     }
   };
 
-  const formatearFecha = (fechaStr) => {
-    if (!fechaStr) return "";
-    const f = new Date(fechaStr);
-    return new Intl.DateTimeFormat("es-CO", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit"
-    }).format(f);
-  };
-
   const obtenerIconoYColor = (tipo) => {
     switch (tipo) {
       case "turno_confirmado":
@@ -262,7 +252,7 @@ export default function CampanaNotificaciones() {
                           {n.codigo_turno && (
                             <span className="notif-codigo">{n.codigo_turno}</span>
                           )}
-                          <span className="notif-fecha">{formatearFecha(n.creado_en)}</span>
+                          <span className="notif-fecha">{formatearTimestampNotificacion(n.creado_en)}</span>
                         </div>
 
                         <p className="notif-titulo">{n.titulo}</p>

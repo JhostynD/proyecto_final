@@ -3,6 +3,9 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Registro from "./pages/Registro";
+import VerificarCorreo from "./pages/VerificarCorreo";
+import OlvideContrasena from "./pages/OlvideContrasena";
+import RestablecerContrasena from "./pages/RestablecerContrasena";
 import SolicitarTurno from "./pages/SolicitarTurno";
 import ConsultarTurnos from "./pages/ConsultarTurnos";
 import DashboardAdmin from "./pages/DashboardAdmin";
@@ -10,6 +13,7 @@ import DashboardUsuario from "./pages/DashboardUsuario";
 import GestionUsuarios from "./pages/GestionUsuarios";
 import GestionTurnos from "./pages/GestionTurnos";
 import GestionServicios from "./pages/GestionServicios";
+import ConsultarTurnoPublico from "./pages/ConsultarTurnoPublico";
 import NotFound from "./pages/NotFound";
 import RutaProtegida from "./components/RutaProtegida";
 
@@ -22,6 +26,14 @@ function App() {
         <Route path="/login" element={<Login />} />
 
         <Route path="/registro" element={<Registro />} />
+
+        <Route path="/verificar-correo" element={<VerificarCorreo />} />
+
+        <Route path="/olvide-contrasena" element={<OlvideContrasena />} />
+
+        <Route path="/restablecer-contrasena" element={<RestablecerContrasena />} />
+
+        <Route path="/consulta-turno" element={<ConsultarTurnoPublico />} />
 
         <Route element={<RutaProtegida />}>
           <Route path="/solicitar-turno" element={<SolicitarTurno />} />

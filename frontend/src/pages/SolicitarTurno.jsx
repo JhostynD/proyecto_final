@@ -3,12 +3,8 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import { api } from "../lib/api";
+import { formatearFechaVisual, formatearHora12, fechaHoyBogota } from "../lib/tiempo";
 import "../styles/SolicitarTurno.css";
-
-// Fecha mínima en timezone Colombia (usa toLocaleDateString para evitar drift de UTC)
-function fechaMinimaBogota() {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date());
-}
 
 const LABEL_MODALIDAD = {
   turno: "Turno Virtual",
@@ -48,7 +44,7 @@ function SolicitarTurno() {
   const [error, setError] = useState("");
   const [cargando, setCargando] = useState(false);
   const timerRedirect = useRef(null);
-  const fechaMinima = fechaMinimaBogota();
+  const fechaMinima = fechaHoyBogota();
 
   useEffect(() => {
     api("/servicios")
@@ -417,10 +413,10 @@ function SolicitarTurno() {
                               aria-checked={seleccionado}
                               className={`time-chip ${seleccionado ? "selected" : ""}`}
                               onClick={() => setHoraSeleccionada(hora)}
-                              title={`Seleccionar ${hora}`}
+                              title={`Seleccionar ${formatearHora12(hora)}`}
                               disabled={Boolean(mensajeExito)}
                             >
-                              <span className="time-text">{hora}</span>
+                              <span className="time-text">{formatearHora12(hora)}</span>
                             </button>
                           );
                         })}
@@ -457,10 +453,10 @@ function SolicitarTurno() {
                       <span className="summary-lbl">Tipo:</span> {LABEL_MODALIDAD[modEfectiva] || modEfectiva}
                     </div>
                     {modEfectiva === "cita" && fecha && (
-                      <div><span className="summary-lbl">Fecha:</span> {fecha}</div>
+                      <div><span className="summary-lbl">Fecha:</span> {formatearFechaVisual(fecha)}</div>
                     )}
                     {modEfectiva === "cita" && horaSeleccionada && (
-                      <div><span className="summary-lbl">Hora:</span> {horaSeleccionada}</div>
+                      <div><span className="summary-lbl">Hora:</span> {formatearHora12(horaSeleccionada)}</div>
                     )}
                     {motivo.trim() && (
                       <div><span className="summary-lbl">Tema:</span> {motivo.trim()}</div>
@@ -506,12 +502,12 @@ function SolicitarTurno() {
                     </div>
                     {mensajeExito.modalidad === "cita" && mensajeExito.fecha && (
                       <div className="success-detail-pill">
-                        <span className="detail-lbl">Fecha:</span> {mensajeExito.fecha}
+                        <span className="detail-lbl">Fecha:</span> {formatearFechaVisual(mensajeExito.fecha)}
                       </div>
                     )}
                     {mensajeExito.modalidad === "cita" && mensajeExito.hora && (
                       <div className="success-detail-pill">
-                        <span className="detail-lbl">Hora:</span> {mensajeExito.hora}
+                        <span className="detail-lbl">Hora:</span> {formatearHora12(mensajeExito.hora)}
                       </div>
                     )}
                   </div>

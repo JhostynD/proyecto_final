@@ -1,0 +1,33 @@
+/* Estilos dedicados para Recuperación y Restablecimiento de Contraseña (FILA CERO) */
+
+.auth-recovery-pending {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.auth-recovery-help-text {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  text-align: center;
+  margin: 8px 0;
+}
+
+.auth-status-banner.success-accent {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.22);
+}
+
+.auth-status-banner.success-accent .auth-status-icon-wrap {
+  background: #10b981;
+  color: #ffffff;
+}
+
+.btn-link-centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  width: 100%;
+}

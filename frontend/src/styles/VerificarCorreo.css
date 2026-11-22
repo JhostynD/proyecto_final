@@ -1,0 +1,118 @@
+.verification-card {
+  text-align: center;
+}
+
+.verification-icon-wrap {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+  transition: transform 0.2s ease;
+}
+
+.verification-icon-wrap.loading {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
+.verification-icon-wrap.success {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.24);
+}
+
+.verification-icon-wrap.error {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.2);
+}
+
+.spinner-indicator-large {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(0, 113, 227, 0.2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: authSpin 0.8s linear infinite;
+  display: inline-block;
+}
+
+@keyframes authSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.verification-subtitle {
+  margin-top: 10px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.verification-actions {
+  margin-top: 28px;
+}
+
+.btn-link-centered {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.verification-error-section {
+  margin-top: 24px;
+  text-align: left;
+}
+
+.verification-resend-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 20px 18px;
+  margin-bottom: 20px;
+}
+
+.verification-resend-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-top: 0;
+  margin-bottom: 6px;
+}
+
+.verification-resend-hint {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  line-height: 1.45;
+}
+
+/* Feedback Box */
+.auth-feedback-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.84rem;
+  line-height: 1.4;
+  margin-top: 10px;
+  margin-bottom: 14px;
+}
+
+.auth-feedback-box.success {
+  background: rgba(16, 185, 129, 0.1);
+  color: #047857;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.auth-feedback-box.error {
+  background: rgba(239, 68, 68, 0.1);
+  color: #b91c1c;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}

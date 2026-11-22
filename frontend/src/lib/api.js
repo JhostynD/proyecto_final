@@ -45,7 +45,11 @@ export async function api(ruta, opciones = {}) {
         }
       }
     }
-    throw new Error(datos.error || "No fue posible completar la solicitud.");
+    const errorObj = new Error(datos.error || "No fue posible completar la solicitud.");
+    errorObj.status = respuesta.status;
+    errorObj.datos = datos;
+    if (datos.noVerificado) errorObj.noVerificado = true;
+    throw errorObj;
   }
   return datos;
 }

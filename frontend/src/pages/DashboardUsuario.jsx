@@ -4,6 +4,7 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import { api } from "../lib/api";
 import { obtenerSesion } from "../lib/auth";
+import { formatearFechaVisual, formatearHora12 } from "../lib/tiempo";
 import "../styles/DashboardUsuario.css";
 
 const LABEL_ESTADO = {
@@ -97,13 +98,13 @@ function TarjetaEnVivo({ turno: turnoInicial }) {
           {turno.fecha && (
             <div className="schedule-box">
               <span className="ticket-label">Fecha</span>
-              <div className="schedule-value">{turno.fecha}</div>
+              <div className="schedule-value">{formatearFechaVisual(turno.fecha)}</div>
             </div>
           )}
           {esCita && turno.hora && (
             <div className="schedule-box">
               <span className="ticket-label">Hora de cita</span>
-              <div className="schedule-value time-accent">{turno.hora}</div>
+              <div className="schedule-value time-accent">{formatearHora12(turno.hora)}</div>
             </div>
           )}
           {turno.modulo && (

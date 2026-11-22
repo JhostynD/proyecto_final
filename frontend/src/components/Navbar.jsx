@@ -57,6 +57,11 @@ function Navbar() {
               </Link>
             </li>
             <li>
+              <Link to="/consulta-turno" className={`nav-item ${esActivo("/consulta-turno") ? "active" : ""}`} onClick={cerrarMenu}>
+                Consultar Turno
+              </Link>
+            </li>
+            <li>
               <Link to="/solicitar-turno" className={`nav-item ${esActivo("/solicitar-turno") ? "active" : ""}`} onClick={cerrarMenu}>
                 Solicitar Turno
               </Link>

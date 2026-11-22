@@ -15,14 +15,29 @@ import { db } from './db.js';
 // -------------------------------------------------------------
 const clientesSSE = new Map(); // usuarioId (number) -> Set<{ res, exp, jti, usuarioId }>
 
+export const MAX_CONEXIONES_SSE_POR_USUARIO = 5;
+
 /**
  * Registra una nueva conexión SSE para un usuario autenticado.
  * Guarda referencia al tiempo de expiración (exp) y jti del token para
  * desautorización proactiva.
+ * Limita a un máximo de 5 conexiones simultáneas por usuario (HTTP 429).
  */
 export function agregarClienteSSE(usuarioId, res, payload = {}) {
   const idNum = Number(usuarioId);
   if (!idNum) return;
+
+  const conexionesActuales = clientesSSE.get(idNum)?.size || 0;
+  if (conexionesActuales >= MAX_CONEXIONES_SSE_POR_USUARIO) {
+    res.writeHead(429, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Retry-After': '30'
+    });
+    res.end(JSON.stringify({
+      error: 'Demasiadas conexiones en tiempo real simultáneas para este usuario. Límite máximo: 5.'
+    }));
+    return;
+  }
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
