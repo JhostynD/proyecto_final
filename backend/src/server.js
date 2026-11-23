@@ -3,6 +3,9 @@ import cors from 'cors';
 import helmet from 'helmet';
 import bcrypt from 'bcryptjs';
 import 'dotenv/config';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { db } from './db.js';
 import {
   autenticar,
@@ -24,30 +27,85 @@ import { agregarClienteSSE, cerrarClientesSSE, registrarNotificacionEstado } fro
 
 const app = express();
 const puerto = Number(process.env.PORT || 3000);
+const directorioFrontend = fileURLToPath(new URL('../../frontend/dist/', import.meta.url));
+const esProduccion = process.env.NODE_ENV === 'production';
+
+// Configuración de trust proxy: 1 salto para proxies inversos estándar (Render, Cloudflare, Nginx)
+// Esto asegura que req.ip extraiga la IP pública real del cliente y no la IP interna del proxy.
+app.set('trust proxy', 1);
 
 // -------------------------------------------------------------
 // CABECERAS DE SEGURIDAD HTTP CON HELMET
 // -------------------------------------------------------------
 app.use(helmet({
-  contentSecurityPolicy: false,
-  hsts: process.env.NODE_ENV === 'production' ? undefined : false,
+  // Observar violaciones primero; pasar a enforcement solo tras revisar reportes.
+  // En test se envía la misma cabecera para verificarla sin bloquear la UI.
+  contentSecurityPolicy: (esProduccion || process.env.NODE_ENV === 'test')
+    ? { reportOnly: esProduccion && process.env.CSP_MODE === 'enforce' ? false : true }
+    : false,
+  xFrameOptions: { action: 'deny' },
+  strictTransportSecurity: esProduccion
+    ? { maxAge: 31_536_000, includeSubDomains: false }
+    : false,
   crossOriginEmbedderPolicy: false
 }));
 
 // -------------------------------------------------------------
 // CORS — solo permite orígenes explícitamente configurados
 // -------------------------------------------------------------
-const origenesPermitidos = (process.env.FRONTEND_URL || 'http://localhost:5173')
+const origenesConfigurados = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'http://localhost:5173')
   .split(',')
-  .map(o => o.trim())
+  .map(o => o.trim().replace(/\/$/, ''))
   .filter(Boolean);
+const origenesPermitidos = new Set([
+  ...origenesConfigurados,
+  // El build de React servido por Express comparte origen con la API en local.
+  // Añadir estos orígenes solo fuera de producción; producción usa su allowlist explícita.
+  ...(!esProduccion ? [
+    `http://localhost:${puerto}`,
+    `http://127.0.0.1:${puerto}`,
+    `http://[::1]:${puerto}`
+  ] : [])
+]);
+
+if (esProduccion) {
+  if (!process.env.FRONTEND_URL || !process.env.FRONTEND_URL.trim()) {
+    throw new Error('FRONTEND_URL es obligatorio en producción.');
+  }
+  const urlsFrontend = process.env.FRONTEND_URL
+    .split(',')
+    .map(u => u.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+  if (urlsFrontend.length === 0) {
+    throw new Error('FRONTEND_URL debe contener al menos una URL válida.');
+  }
+  for (const url of urlsFrontend) {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'https:') {
+        throw new Error(`FRONTEND_URL en producción debe usar protocolo https: (${url})`);
+      }
+    } catch (err) {
+      throw new Error(`Error en formato de FRONTEND_URL: ${err.message}`);
+    }
+  }
+}
+
+// Rechazar explícitamente el origen no autorizado. Antes, elevarlo como error
+// convertía una denegación CORS esperada en un 500 genérico.
+app.use((req, res, next) => {
+  const origen = req.get('Origin');
+  if (origen && !origenesPermitidos.has(origen)) {
+    return res.status(403).json({ error: 'Origen no permitido.' });
+  }
+  return next();
+});
 
 app.use(cors({
   origin: (origen, callback) => {
     // Permitir peticiones sin Origin (ej. curl local, tests internos)
     if (!origen) return callback(null, true);
-    if (origenesPermitidos.includes(origen)) return callback(null, true);
-    return callback(new Error(`Origen CORS no permitido: ${origen}`));
+    return callback(null, origenesPermitidos.has(origen));
   },
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -200,7 +258,7 @@ function calcularDisponibilidadSlots({ duracionMin, citasExistentes, horaActualB
 
   const minutosAhora = esHoy ? minutosDesdeMedianoche(horaActualBogota) : -1;
 
-  for (let t = inicioDia; t <= finDia; t += duracionMin) {
+  for (let t = inicioDia; t + duracionMin <= finDia; t += duracionMin) {
     const slotFin = t + duracionMin;
     const horaStr = minutosAHora(t);
 
@@ -1097,7 +1155,9 @@ app.post('/api/auth/login', limitarIntentos, async (req, res) => {
 
   // Bloquear inicio de sesión para cuentas no verificadas (HTTP 403)
   // Los usuarios antiguos (o creados antes de la columna) tienen correo_verificado = 1 o NULL y conservan su acceso
-  if (usuario.correo_verificado === 0 || usuario.correo_verificado === false) {
+  // Modo demo explícito: si ALLOW_UNVERIFIED_LOGIN === 'true', se permite iniciar sesión sin verificar.
+  const permitirLoginSinVerificar = process.env.ALLOW_UNVERIFIED_LOGIN === 'true';
+  if (!permitirLoginSinVerificar && (usuario.correo_verificado === 0 || usuario.correo_verificado === false)) {
     return res.status(403).json({
       error: 'Debes verificar tu correo electrónico antes de iniciar sesión. Por favor revisa tu bandeja de entrada o solicita un nuevo enlace de verificación.',
       noVerificado: true
@@ -1442,8 +1502,11 @@ app.post('/api/turnos', autenticar, async (req, res) => {
   // 1B: Validaciones de jornada según modalidad
   if (modEfectiva === 'turno') {
     // Turno virtual inmediato: solo lunes a viernes no festivos en horario 08:00 - 16:30
-    if (!esDiaHabil(hoyBogota)) {
-      if (esFestivoColombia(hoyBogota)) {
+    const fechaEvaluada = process.env.NODE_ENV === 'test' && fechaValida(req.body.fechaSimulada)
+      ? req.body.fechaSimulada
+      : hoyBogota;
+    if (!esDiaHabil(fechaEvaluada)) {
+      if (esFestivoColombia(fechaEvaluada)) {
         return res.status(400).json({ error: 'Hoy es un día festivo oficial en Colombia. No se atienden turnos virtuales inmediatos.' });
       }
       return res.status(400).json({ error: 'Los turnos virtuales inmediatos solo están disponibles de lunes a viernes en días hábiles.' });
@@ -2651,6 +2714,14 @@ if (temporizadorLimpiezaSesiones.unref) {
 }
 
 
+app.use(express.static(directorioFrontend));
+app.get('/{*ruta}', (req, res, next) => {
+  if (req.accepts('html')) {
+    return res.sendFile(path.join(directorioFrontend, 'index.html'));
+  }
+  return next();
+});
+
 app.use((error, _req, res, _next) => {
   // En producción: solo loggear mensaje, nunca el stack completo en la respuesta
   if (process.env.NODE_ENV === 'production') {
@@ -2663,8 +2734,12 @@ app.use((error, _req, res, _next) => {
 });
 
 let servidor;
+let servidores = [];
 if (process.env.NODE_ENV !== 'test') {
-  servidor = app.listen(puerto, () => console.log(`API disponible en http://localhost:${puerto}`));
+  servidor = app.listen(puerto, '0.0.0.0', () => {
+    console.log(`API disponible en http://0.0.0.0:${puerto}`);
+  });
+  servidores = [servidor];
 }
 
-export { app, servidor };
+export { app, servidor, servidores };
