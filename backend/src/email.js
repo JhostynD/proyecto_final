@@ -11,6 +11,49 @@ export const LIMITE_MAX_CUERPO_BYTES = 500 * 1024; // 500 KB (512,000 bytes UTF-
 
 let transporteInstancia = null;
 
+export function usaAPIBrevo() {
+  return Boolean(process.env.BREVO_API_KEY && process.env.BREVO_API_KEY.trim());
+}
+
+function parsearRemitente(valor) {
+  const v = String(valor || '').trim();
+  const m = v.match(/^(.*)<([^<>]+)>$/);
+  if (m) {
+    const nombre = m[1].trim().replace(/^"|"$/g, '');
+    return { ...(nombre ? { name: nombre } : {}), email: m[2].trim() };
+  }
+  return { email: v };
+}
+
+async function llamarAPIBrevo(ruta, opciones = {}) {
+  let respuesta;
+  try {
+    respuesta = await fetch(`https://api.brevo.com/v3${ruta}`, {
+      ...opciones,
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        'api-key': process.env.BREVO_API_KEY,
+        ...(opciones.headers || {})
+      },
+      signal: AbortSignal.timeout(15_000)
+    });
+  } catch {
+    const err = new Error('Fallo de red al contactar la API de Brevo.');
+    err.code = 'ECONNECTION';
+    throw err;
+  }
+  let datos = null;
+  try { datos = await respuesta.json(); } catch { /* sin cuerpo JSON */ }
+  if (!respuesta.ok) {
+    const err = new Error(`Brevo API ${respuesta.status}: ${datos?.message || 'error'}`);
+    err.responseCode = respuesta.status;
+    if (respuesta.status === 401 || respuesta.status === 403) err.code = 'EAUTH';
+    throw err;
+  }
+  return datos;
+}
+
 /**
  * Enmascara una dirección de correo electrónico para registros de auditoría y logs,
  * protegiendo los datos personales (PII) según los principios de privacidad.
@@ -66,6 +109,10 @@ export function sanitizarMensajeError(texto) {
   // 1. Eliminar contraseña SMTP si estuviera definida en el entorno
   if (process.env.SMTP_PASS && process.env.SMTP_PASS.trim()) {
     sanitizado = sanitizado.split(process.env.SMTP_PASS).join('[REDACTADO]');
+  }
+
+  if (process.env.BREVO_API_KEY && process.env.BREVO_API_KEY.trim()) {
+    sanitizado = sanitizado.split(process.env.BREVO_API_KEY).join('[REDACTADO]');
   }
 
   // 2. Enmascarar cualquier correo electrónico presente en el texto
@@ -177,6 +224,13 @@ export function categorizarErrorSMTP(error) {
  * @returns {{ valido: boolean, error?: string }}
  */
 export function validarConfiguracionSMTP() {
+  if (usaAPIBrevo()) {
+    if (!process.env.EMAIL_FROM || !process.env.EMAIL_FROM.trim()) {
+      return { valido: false, error: 'Configuración de correo incompleta: falta EMAIL_FROM.' };
+    }
+    return { valido: true };
+  }
+
   const faltantes = [];
 
   if (!process.env.SMTP_HOST || !process.env.SMTP_HOST.trim()) faltantes.push('SMTP_HOST');
@@ -291,8 +345,12 @@ export async function verificarConexionSMTP() {
   }
 
   try {
-    const transporte = obtenerTransporte();
-    await transporte.verify();
+    if (usaAPIBrevo()) {
+      await llamarAPIBrevo('/account');
+    } else {
+      const transporte = obtenerTransporte();
+      await transporte.verify();
+    }
     return {
       ok: true,
       mensaje: 'Conexión con el servidor SMTP establecida y autenticada correctamente.'
@@ -428,8 +486,23 @@ export async function enviarCorreoTransaccional({ destinatario, asunto, texto, h
   const destinoEnmascarado = enmascararCorreo(destinoLimpio);
 
   try {
-    const transporte = obtenerTransporte();
-    const info = await transporte.sendMail(opcionesCorreo);
+    let info;
+    if (usaAPIBrevo()) {
+      const datos = await llamarAPIBrevo('/smtp/email', {
+        method: 'POST',
+        body: JSON.stringify({
+          sender: parsearRemitente(remitente),
+          to: [{ email: destinoLimpio }],
+          subject: asuntoLimpio,
+          ...(textoLimpio ? { textContent: textoLimpio } : {}),
+          ...(htmlLimpio ? { htmlContent: htmlLimpio } : {})
+        })
+      });
+      info = { messageId: datos?.messageId, accepted: [destinoLimpio], rejected: [] };
+    } else {
+      const transporte = obtenerTransporte();
+      info = await transporte.sendMail(opcionesCorreo);
+    }
 
     // Registro seguro de auditoría: destinatario enmascarado (PII protegido) y messageId
     console.log(`[Email] Correo transaccional enviado a: ${destinoEnmascarado} | messageId: ${info.messageId}`);
