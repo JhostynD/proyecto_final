@@ -91,6 +91,18 @@ if (esProduccion) {
   }
 }
 
+function obtenerUrlFrontend() {
+  const raw = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.trim() : '';
+  if (raw) {
+    const primeraUrl = raw.split(',').map(u => u.trim()).filter(Boolean)[0];
+    if (primeraUrl) return primeraUrl.replace(/\/+$/, '');
+  }
+  if (esProduccion) {
+    throw new Error('FRONTEND_URL no configurado en producción para enlaces de correo.');
+  }
+  return 'http://localhost:5173';
+}
+
 // Rechazar explícitamente el origen no autorizado. Antes, elevarlo como error
 // convertía una denegación CORS esperada en un 500 genérico.
 app.use((req, res, next) => {
@@ -588,8 +600,8 @@ app.post('/api/auth/registro', limitarIntentos, async (req, res) => {
   // 3. Enviar correo de verificación después de confirmar la transacción
   let correoEnviado = false;
   if (insertId && tokenPlanoGenerado) {
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    const enlaceVerificacion = `${frontendUrl.replace(/\/+$/, '')}/verificar-correo?token=${tokenPlanoGenerado}`;
+    const frontendUrl = obtenerUrlFrontend();
+    const enlaceVerificacion = `${frontendUrl}/verificar-correo?token=${tokenPlanoGenerado}`;
 
     try {
       const resEmail = await enviarCorreoTransaccional({
@@ -599,6 +611,7 @@ app.post('/api/auth/registro', limitarIntentos, async (req, res) => {
         html: construirHtmlVerificacion(nombre, enlaceVerificacion)
       });
       correoEnviado = !!resEmail?.enviado;
+      if (!resEmail?.enviado) console.error('[Email Registro] No enviado:', resEmail?.codigo, resEmail?.error || resEmail?.mensaje);
     } catch (errEmail) {
       console.error('[Error Envio Correo Registro]', errEmail.message);
     }
@@ -795,16 +808,17 @@ app.post('/api/auth/reenviar-verificacion', limitarReenvioVerificacion, async (r
 
     // Despacho del correo después del commit
     if (tokenPlanoGenerado) {
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      const enlaceVerificacion = `${frontendUrl.replace(/\/+$/, '')}/verificar-correo?token=${tokenPlanoGenerado}`;
+      const frontendUrl = obtenerUrlFrontend();
+      const enlaceVerificacion = `${frontendUrl}/verificar-correo?token=${tokenPlanoGenerado}`;
 
       try {
-        await enviarCorreoTransaccional({
+        const resEmail = await enviarCorreoTransaccional({
           destinatario: usuario.correo,
           asunto: 'Verifica tu correo electrónico - FILA CERO',
           texto: construirTextoVerificacion(usuario.nombre, enlaceVerificacion),
           html: construirHtmlVerificacion(usuario.nombre, enlaceVerificacion)
         });
+        if (!resEmail?.enviado) console.error('[Email Reenvio] No enviado:', resEmail?.codigo, resEmail?.error || resEmail?.mensaje);
       } catch (errEmail) {
         console.error('[Error Envio Correo Reenvio]', errEmail.message);
       }
@@ -929,8 +943,8 @@ app.post('/api/auth/olvide-contrasena', limitarRecuperacionContrasena, async (re
   }
 
   // 6. Despacho del correo electrónico fuera de cualquier transacción de base de datos
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-  const enlaceRecuperacion = `${frontendUrl.replace(/\/+$/, '')}/restablecer-contrasena?token=${tokenPlanoGenerado}`;
+  const frontendUrl = obtenerUrlFrontend();
+  const enlaceRecuperacion = `${frontendUrl}/restablecer-contrasena?token=${tokenPlanoGenerado}`;
 
   let correoExitoso = false;
   try {
@@ -941,6 +955,7 @@ app.post('/api/auth/olvide-contrasena', limitarRecuperacionContrasena, async (re
       html: construirHtmlRecuperacion(usuario.nombre, enlaceRecuperacion)
     });
     correoExitoso = resEmail?.enviado === true;
+    if (!correoExitoso) console.error('[Email Recuperacion] No enviado:', resEmail?.codigo, resEmail?.error || resEmail?.mensaje);
   } catch (errEmail) {
     console.error('[Error Envio Correo Recuperacion]', errEmail.message);
     correoExitoso = false;
