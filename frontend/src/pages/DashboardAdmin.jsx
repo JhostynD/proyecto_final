@@ -121,7 +121,7 @@ function TopServicios({ datos }) {
       <div className="chart-empty">
         <div className="empty-state-content">
           <p className="empty-state-title">Aún no hay servicios solicitados en este período</p>
-          <Link to="/servicios" className="empty-state-link">Ver catálogo de servicios →</Link>
+          <Link to="/servicios" className="empty-state-link">Ver catálogo de servicios</Link>
         </div>
       </div>
     );

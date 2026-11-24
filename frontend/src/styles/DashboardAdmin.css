@@ -56,7 +56,6 @@
   height: 8px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 8px var(--accent);
 }
 
 .admin-section-title {
@@ -159,18 +158,18 @@
 }
 
 .kpi-mini-icon.amber {
-  background: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
+  background: var(--status-pending-bg);
+  color: var(--status-pending-text);
 }
 
 .kpi-mini-icon.green {
-  background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
+  background: var(--status-confirmed-bg);
+  color: var(--status-confirmed-text);
 }
 
 .kpi-mini-icon.red {
-  background: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
+  background: var(--status-cancelled-bg);
+  color: var(--status-cancelled-text);
 }
 
 .admin-kpi-number {
