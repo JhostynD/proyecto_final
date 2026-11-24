@@ -48,7 +48,7 @@ function Navbar() {
           <span className="hamburger-line"></span>
         </button>
 
-        {/* Links de escritorio y móvil */}
+        {/* Links de escritorio y móvil (máximo 5 ítems limpios) */}
         <div className={`navbar-collapse ${menuAbierto ? "is-open" : ""}`}>
           <ul className="nav-links">
             <li>
@@ -57,25 +57,22 @@ function Navbar() {
               </Link>
             </li>
             <li>
-              <Link to="/consulta-turno" className={`nav-item ${esActivo("/consulta-turno") ? "active" : ""}`} onClick={cerrarMenu}>
-                Consultar Turno
-              </Link>
-            </li>
-            <li>
               <Link to="/solicitar-turno" className={`nav-item ${esActivo("/solicitar-turno") ? "active" : ""}`} onClick={cerrarMenu}>
                 Solicitar Turno
               </Link>
             </li>
             <li>
-              <Link to="/consultar-turnos" className={`nav-item ${esActivo("/consultar-turnos") ? "active" : ""}`} onClick={cerrarMenu}>
-                Consultar Turnos
+              <Link to="/consulta-turno" className={`nav-item ${esActivo("/consulta-turno") ? "active" : ""}`} onClick={cerrarMenu}>
+                Seguir mi turno
               </Link>
             </li>
-            <li>
-              <Link to="/dashboard" className={`nav-item ${esActivo("/dashboard") ? "active" : ""}`} onClick={cerrarMenu}>
-                Mi Panel
-              </Link>
-            </li>
+            {sesion && (
+              <li>
+                <Link to="/consultar-turnos" className={`nav-item ${esActivo("/consultar-turnos") || esActivo("/dashboard") ? "active" : ""}`} onClick={cerrarMenu}>
+                  Mis turnos
+                </Link>
+              </li>
+            )}
             {sesion?.usuario?.rol === "admin" && (
               <li>
                 <Link

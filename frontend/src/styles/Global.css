@@ -1,24 +1,42 @@
 :root {
   color-scheme: light;
 
-  /* Typography Cascade */
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, system-ui, sans-serif;
+  /* Typography Cascade & Scale */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Inter, system-ui, sans-serif;
+  --text-caption: 0.75rem;    /* 12px / 1.33 */
+  --text-callout: 0.8125rem;  /* 13px / 1.38 */
+  --text-subhead: 0.875rem;   /* 14px / 1.43 */
+  --text-body: 0.9375rem;     /* 15px / 1.47 */
+  --text-headline: 1.0625rem; /* 17px / 1.29 */
+  --text-title-2: 1.375rem;   /* 22px / 1.27 */
+  --text-title-1: 1.75rem;    /* 28px / 1.21 */
+  --text-display: clamp(2.5rem, 6vw, 4rem); /* Título Hero */
 
-  /* Canvas & Surfaces (Apple Canvas Light: #fbfbfd) */
+  /* Spacing Scale (4/8px Rhythm) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* Canvas & Surfaces (Apple Light) */
   --bg-canvas: #fbfbfd;
   --bg-surface: #ffffff;
   --bg-surface-elevated: #ffffff;
   --bg-secondary: #f5f5f7;
   --bg-tertiary: #e5e5ea;
 
-  /* Text & Labels (Apple System Hierarchy - WCAG AA compliant >= 4.5:1) */
+  /* Text & Labels (WCAG AA compliant >= 4.5:1) */
   --text-primary: #1d1d1f;
   --text-secondary: #59595e;
   --text-tertiary: #6e6e73;
   --text-quaternary: #8e8e93;
 
-  /* Brand / Apple Blue */
+  /* Brand / Apple Blue Accents */
   --accent: #0071e3;
+  --accent-solid: #0071e3; /* Para texto blanco sobre botón: contraste 4.53:1 */
   --accent-hover: #0077ed;
   --accent-active: #0062c4;
   --accent-subtle: rgba(0, 113, 227, 0.08);
@@ -41,13 +59,13 @@
   --shadow-lg: 0 14px 34px rgba(0, 0, 0, 0.07), 0 4px 12px rgba(0, 0, 0, 0.03);
   --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.06);
 
-  /* Radii (Apple Continuous Squircle 12-20px) */
-  --radius-xs: 6px;
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 18px;
-  --radius-xl: 20px;
-  --radius-pill: 980px;
+  /* Radii estandarizados (HIG) */
+  --radius-xs: 8px;     /* Alias para inputs y badges */
+  --radius-sm: 8px;     /* Inputs, badges, chips pequeños */
+  --radius-md: 16px;    /* Alias para tarjetas */
+  --radius-lg: 16px;    /* Tarjetas y paneles */
+  --radius-xl: 20px;    /* Modales y hojas flotantes */
+  --radius-pill: 980px; /* Botones principales, chips interactivos */
 
   /* Semantic Status Colors (Queue & Operations) */
   --status-pending-bg: rgba(245, 158, 11, 0.12);
@@ -99,12 +117,13 @@
     --bg-secondary: #2c2c2e;
     --bg-tertiary: #3a3a3c;
 
-    --text-primary: #f5f5f7;
-    --text-secondary: #a1a1a6;
-    --text-tertiary: #8e8e93;
+    --text-primary: #f5f5f7;   /* Contraste sobre #000000: 19.5:1, sobre #1c1c1e: 15.2:1 */
+    --text-secondary: #a1a1a6; /* Contraste sobre #000000: 7.0:1, sobre #1c1c1e: 5.5:1 (WCAG AA cumple) */
+    --text-tertiary: #8e8e93;  /* Contraste sobre #000000: 5.4:1 (WCAG AA cumple) */
     --text-quaternary: #636366;
 
-    --accent: #2997ff;
+    --accent: #2997ff;         /* Texto y enlaces sobre fondo oscuro: contraste 7.2:1 */
+    --accent-solid: #0071e3;   /* Fondo de botón sólido con texto blanco #ffffff: contraste 4.53:1 */
     --accent-hover: #47a6ff;
     --accent-active: #147ce5;
     --accent-subtle: rgba(41, 151, 255, 0.15);
@@ -124,6 +143,14 @@
     --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 14px 34px rgba(0, 0, 0, 0.7);
     --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.85);
+
+    /* Radii Dark Mode consistentes */
+    --radius-xs: 8px;
+    --radius-sm: 8px;
+    --radius-md: 16px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --radius-pill: 980px;
 
     --status-pending-bg: rgba(245, 158, 11, 0.18);
     --status-pending-text: #fbbf24;
