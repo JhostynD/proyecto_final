@@ -352,8 +352,8 @@
 }
 
 .stats-filter-error {
-  font-size: 0.84rem;
-  color: #b91c1c;
+  font-size: var(--text-callout);
+  color: var(--status-cancelled-text);
 }
 
 /* ── Stats cards grid ───────────────────────────────────────────── */
