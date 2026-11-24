@@ -3,10 +3,16 @@ import { Link } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import { obtenerSesion } from "../lib/auth";
+import { api } from "../lib/api";
+import { formatearFechaVisual, formatearHora12 } from "../lib/tiempo";
 import "../styles/Home.css";
+
+const ESTADOS_ACTIVOS = ["en_espera", "llamando", "en_atencion", "confirmado", "pendiente"];
 
 function Home() {
   const [sesion, setSesion] = useState(obtenerSesion());
+  const [turnoActivo, setTurnoActivo] = useState(null);
+  const [cargandoTurno, setCargandoTurno] = useState(false);
 
   useEffect(() => {
     const actualizar = () => setSesion(obtenerSesion());
@@ -17,6 +23,34 @@ function Home() {
       window.removeEventListener("storage", actualizar);
     };
   }, []);
+
+  useEffect(() => {
+    if (!sesion) {
+      setTurnoActivo(null);
+      return;
+    }
+
+    let montado = true;
+    setCargandoTurno(true);
+    api("/turnos")
+      .then((turnos) => {
+        if (!montado) return;
+        if (Array.isArray(turnos)) {
+          const activo = turnos.find((t) => ESTADOS_ACTIVOS.includes(t.estado));
+          setTurnoActivo(activo || null);
+        }
+      })
+      .catch(() => {
+        if (montado) setTurnoActivo(null);
+      })
+      .finally(() => {
+        if (montado) setCargandoTurno(false);
+      });
+
+    return () => {
+      montado = false;
+    };
+  }, [sesion]);
 
   return (
     <div className="page-shell">
@@ -31,41 +65,127 @@ function Home() {
               Atención y Gestión de Citas
             </div>
 
-            <h1 className="hero-title">
-              Gestiona tus turnos con <span className="text-gradient">fluidez y precisión</span>
-            </h1>
+            {sesion ? (
+              /* Con sesión iniciada: Resumen útil */
+              <div className="hero-user-summary">
+                <h1 className="hero-title">
+                  Hola, {sesion.usuario?.nombre ? sesion.usuario.nombre.split(" ")[0] : "Usuario"}
+                </h1>
+                <p className="hero-description">
+                  Revisa el estado de tu atención en tiempo real o programa un nuevo servicio presencial.
+                </p>
 
-            <p className="hero-description">
-              Reserva tu cita en línea, consulta la disponibilidad de horarios en tiempo real
-              y gestiona tus turnos sin filas presenciales.
-            </p>
+                {cargandoTurno ? (
+                  <div className="hero-active-card hero-active-card--skeleton">
+                    <span className="hero-skeleton-line"></span>
+                  </div>
+                ) : turnoActivo ? (
+                  <div className="hero-active-card">
+                    <div className="hero-card-header">
+                      <span className="hero-card-tag">Turno Activo</span>
+                      <span className="hero-card-code">#{turnoActivo.codigo || turnoActivo.id}</span>
+                    </div>
 
-            <div className="hero-actions">
-              <Link className="btn-apple-primary" to="/solicitar-turno">
-                Solicitar Turno
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M5 12h14" />
-                  <path d="m12 5 7 7-7 7" />
-                </svg>
-              </Link>
-              {sesion ? (
-                <Link className="btn-apple-secondary" to="/consultar-turnos">
-                  Ver mis turnos
-                </Link>
-              ) : (
-                <Link className="btn-apple-secondary" to="/login">
-                  Iniciar Sesión
-                </Link>
-              )}
-            </div>
+                    <div className="hero-card-body">
+                      <div className="hero-card-info">
+                        <span className="hero-card-label">Servicio</span>
+                        <strong className="hero-card-val">{turnoActivo.servicio || "Atención General"}</strong>
+                      </div>
 
-            {!sesion && (
-              <p className="hero-register-hint">
-                ¿No tienes una cuenta aún?{" "}
-                <Link to="/registro" className="hero-register-link">
-                  Crea una cuenta gratis
-                </Link>
-              </p>
+                      <div className="hero-card-info">
+                        <span className="hero-card-label">Horario</span>
+                        <span className="hero-card-val">
+                          {formatearFechaVisual(turnoActivo.fecha)} • {formatearHora12(turnoActivo.hora)}
+                        </span>
+                      </div>
+
+                      <div className="hero-card-info">
+                        <span className="hero-card-label">Estado</span>
+                        <span className="hero-card-status">
+                          {turnoActivo.posicion ? `Posición en fila: #${turnoActivo.posicion}` : (turnoActivo.estado === "llamando" ? "¡Es tu turno!" : "Turno confirmado")}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="hero-card-actions">
+                      <Link className="btn-apple-primary" to="/consultar-turnos">
+                        Ver mi turno
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M5 12h14" />
+                          <path d="m12 5 7 7-7 7" />
+                        </svg>
+                      </Link>
+                      <Link className="btn-apple-secondary" to="/solicitar-turno">
+                        Solicitar otro turno
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="hero-actions">
+                    <Link className="btn-apple-primary" to="/solicitar-turno">
+                      Solicitar Turno
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M5 12h14" />
+                        <path d="m12 5 7 7-7 7" />
+                      </svg>
+                    </Link>
+                    <Link className="btn-apple-secondary" to="/consultar-turnos">
+                      Ver mis turnos
+                    </Link>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Sin sesión: Hero informativo + Tarjeta de ejemplo interactivo */
+              <>
+                <h1 className="hero-title">
+                  Gestiona tus turnos con <span className="text-gradient">fluidez y precisión</span>
+                </h1>
+
+                <p className="hero-description">
+                  Reserva tu cita en línea, consulta la disponibilidad de horarios en tiempo real
+                  y sigue tu turno desde tu dispositivo sin filas presenciales.
+                </p>
+
+                <div className="hero-actions">
+                  <Link className="btn-apple-primary" to="/solicitar-turno">
+                    Solicitar Turno
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M5 12h14" />
+                      <path d="m12 5 7 7-7 7" />
+                    </svg>
+                  </Link>
+                  <Link className="btn-apple-secondary" to="/login">
+                    Iniciar Sesión
+                  </Link>
+                </div>
+
+                <p className="hero-register-hint">
+                  ¿No tienes una cuenta aún?{" "}
+                  <Link to="/registro" className="hero-register-link">
+                    Crea una cuenta gratis
+                  </Link>
+                </p>
+
+                {/* Tarjeta de muestra visual claramente indicada como Ejemplo */}
+                <div className="hero-sample-card" aria-label="Ejemplo ilustrativo de turno virtual">
+                  <div className="sample-card-badge">Ejemplo de Turno Virtual</div>
+                  <div className="sample-card-row">
+                    <div>
+                      <span className="sample-label">Servicio</span>
+                      <strong className="sample-title">Atención en Taquilla</strong>
+                    </div>
+                    <div className="sample-turn-code">A-024</div>
+                  </div>
+                  <div className="sample-card-row">
+                    <div>
+                      <span className="sample-label">Tu posición</span>
+                      <span className="sample-highlight">2 personas antes • ~8 min</span>
+                    </div>
+                    <span className="sample-status-pill">En espera</span>
+                  </div>
+                </div>
+              </>
             )}
           </div>
         </section>
