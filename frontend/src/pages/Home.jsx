@@ -36,7 +36,11 @@ function Home() {
       .then((turnos) => {
         if (!montado) return;
         if (Array.isArray(turnos)) {
-          const activo = turnos.find((t) => ESTADOS_ACTIVOS.includes(t.estado));
+          // Filtrado defensivo: asegurar que solo pertenezca al usuario de la sesión actual
+          const turnosPropios = turnos.filter(
+            (t) => !t.usuario_id || t.usuario_id === sesion.usuario?.id
+          );
+          const activo = turnosPropios.find((t) => ESTADOS_ACTIVOS.includes(t.estado));
           setTurnoActivo(activo || null);
         }
       })

@@ -43,10 +43,13 @@ function formatFecha(isoDate) {
 
 // ── Subcomponent: Gráfico de barras verticales pure-CSS ───────────────
 function GraficoDiario({ datos }) {
-  if (!datos || datos.length === 0) {
+  if (!datos || datos.length === 0 || datos.every((d) => d.total === 0)) {
     return (
       <div className="chart-empty">
-        <span>Sin datos para el período seleccionado</span>
+        <div className="empty-state-content">
+          <p className="empty-state-title">Aún no hay turnos en este período</p>
+          <p className="empty-state-sub">Prueba seleccionando otro rango de fechas o verifica la agenda.</p>
+        </div>
       </div>
     );
   }
@@ -75,7 +78,14 @@ function GraficoDiario({ datos }) {
 // ── Subcomponent: Distribución por estado ─────────────────────────────
 function DistribucionEstados({ datos, total }) {
   if (!datos || datos.length === 0 || total === 0) {
-    return <div className="chart-empty"><span>Sin datos</span></div>;
+    return (
+      <div className="chart-empty">
+        <div className="empty-state-content">
+          <p className="empty-state-title">Aún no hay turnos en este período</p>
+          <p className="empty-state-sub">Los estados aparecerán conforme se atiendan solicitudes.</p>
+        </div>
+      </div>
+    );
   }
   const ordenados = [...datos].sort((a, b) => b.total - a.total);
   return (
@@ -106,8 +116,15 @@ function DistribucionEstados({ datos, total }) {
 
 // ── Subcomponent: Top servicios ───────────────────────────────────────
 function TopServicios({ datos }) {
-  if (!datos || datos.length === 0) {
-    return <div className="chart-empty"><span>Sin datos</span></div>;
+  if (!datos || datos.length === 0 || datos.every((s) => s.total === 0)) {
+    return (
+      <div className="chart-empty">
+        <div className="empty-state-content">
+          <p className="empty-state-title">Aún no hay servicios solicitados en este período</p>
+          <Link to="/servicios" className="empty-state-link">Ver catálogo de servicios →</Link>
+        </div>
+      </div>
+    );
   }
   const max = Math.max(...datos.map((s) => s.total), 1);
   return (
@@ -211,7 +228,30 @@ function DashboardAdmin() {
   const kpi = stats?.kpi;
   const cargando = cargandoStats;
 
+  // Cálculo de Métricas en Vivo / Del Momento a partir de resumen.turnos y resumen.estados
+  const turnosLista = resumen?.turnos || [];
+  const hoyStr = new Date().toISOString().slice(0, 10);
+
+  const enEsperaAhora = turnosLista.filter((t) => t.estado === "en_espera" || t.estado === "pendiente").length;
+  const enAtencionAhora = turnosLista.filter((t) => t.estado === "en_atencion" || t.estado === "llamando").length;
+  const turnosHoy = turnosLista.filter((t) => t.fecha === hoyStr).length;
+
   const ICONOS = {
+    reloj: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+    ),
+    actividad: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+      </svg>
+    ),
+    calendario: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+    ),
     total: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/>
@@ -259,6 +299,22 @@ function DashboardAdmin() {
             <div className="admin-header-actions">
               <Link to="/gestion-turnos" className="btn-apple-primary btn-sm">Gestionar Turnos</Link>
             </div>
+          </div>
+
+          {/* ── Métricas del Momento (En Vivo) ──────────────────── */}
+          <div className="admin-section-subhead">
+            <span className="section-dot live"></span>
+            <h2 className="admin-section-title">Actividad en vivo</h2>
+          </div>
+          <div className="admin-kpi-grid admin-kpi-grid--live">
+            <KpiCard etiqueta="En espera ahora" valor={enEsperaAhora} color="blue" icono={ICONOS.reloj} cargando={!resumen} />
+            <KpiCard etiqueta="En atención" valor={enAtencionAhora} color="cyan" icono={ICONOS.actividad} cargando={!resumen} />
+            <KpiCard etiqueta="Turnos de hoy" valor={turnosHoy} color="amber" icono={ICONOS.calendario} cargando={!resumen} />
+          </div>
+
+          {/* ── Métricas del Período Seleccionado ────────────────── */}
+          <div className="admin-section-subhead" style={{ marginTop: "32px" }}>
+            <h2 className="admin-section-title">Métricas del período</h2>
           </div>
 
           {/* ── Filtro de período ─────────────────────────────────── */}
@@ -329,27 +385,30 @@ function DashboardAdmin() {
             </div>
           )}
 
-          {/* ── KPI cards ────────────────────────────────────────── */}
-          <div className="admin-kpi-grid">
-            <KpiCard etiqueta="Total en período" valor={kpi?.total ?? 0} color="purple" icono={ICONOS.total} cargando={cargando} />
+          {/* ── KPI cards del período (5 columnas / 3+2 coherente) ── */}
+          <div className="admin-kpi-grid admin-kpi-grid--periodo">
+            <KpiCard etiqueta="Total en período" valor={kpi?.total ?? 0} color="blue" icono={ICONOS.total} cargando={cargando} />
             <KpiCard etiqueta="Pendientes / Activos" valor={(kpi?.pendientes ?? 0) + (kpi?.en_proceso ?? 0)} color="amber" icono={ICONOS.pendiente} cargando={cargando} />
             <KpiCard etiqueta="Completados" valor={kpi?.completados ?? 0} color="green" icono={ICONOS.completado} cargando={cargando} />
             <KpiCard etiqueta="Cancelados" valor={kpi?.cancelados ?? 0} color="red" icono={ICONOS.cancelado} cargando={cargando} />
             <KpiCard etiqueta="Usuarios activos" valor={kpi?.usuarios_activos ?? 0} color="blue" icono={ICONOS.usuarios} cargando={cargando} />
           </div>
 
-          {/* ── Indicador de cancelaciones ───────────────────────── */}
+          {/* ── Indicador de cancelaciones (con tooltip de fórmula) ── */}
           {!cargando && kpi && (
             <div className="cancelacion-card">
               <div className="cancelacion-left">
                 <span className="cancelacion-titulo">Tasa de cancelación</span>
-                <span className="cancelacion-formula" title={kpi.formula_cancelacion}>
-                  {kpi.formula_cancelacion}
+                <span
+                  className="cancelacion-formula"
+                  title={`Fórmula de cálculo: ${kpi.formula_cancelacion || "cancelados / total * 100"}`}
+                >
+                  cancelados ÷ total finalizados
                 </span>
               </div>
               <div className="cancelacion-right">
                 {kpi.tasa_cancelacion === null ? (
-                  <span className="cancelacion-null">Sin datos suficientes</span>
+                  <span className="cancelacion-null">Aún no hay turnos en este período</span>
                 ) : (
                   <>
                     <div
