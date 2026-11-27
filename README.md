@@ -4,7 +4,6 @@ FILA CERO es una aplicación web para solicitar y gestionar turnos de atención 
 
 ---
 
-Esta guía corresponde a la rama [`deploy/gratis`](https://github.com/JhostynD/proyecto_final/tree/deploy/gratis).
 
 ## Problema que resuelve
 
